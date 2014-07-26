@@ -1,0 +1,125 @@
+pytest (2.6.0-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream release.
+  * debian/control:
+    - Bump version requirements for python(3)-py to >= 1.4.22.
+  * Use local copy of Python's objects.inv. (Closes: #739406)
+    - debian/control: Add python-doc to Build-Depends.
+    - debian/patches/local-intersphinx: Add patch to python-doc's copy to
+      objects.inv.
+  * debian/copyright: Update copyright years.
+  * debian/patches/remove-herokuapp-images: Remove images fetched from
+    herokuapps.com.
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Sat, 26 Jul 2014 10:58:07 +0200
+
+pytest (2.5.2-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream release.
+  * d/patches/remove_google_js: Refreshed.
+
+ -- Barry Warsaw <barry@debian.org>  Mon, 28 Apr 2014 18:10:47 -0400
+
+pytest (2.5.1-1) unstable; urgency=low
+
+  * Team upload.
+  * New upstream release.
+  * d/control: Update python-py and python3-py dependency versions.
+    Closes: #731299
+  * d/patches/remove_google_js: Refreshed.
+
+ -- Barry Warsaw <barry@debian.org>  Thu, 12 Dec 2013 10:27:41 -0500
+
+pytest (2.4.2-1) unstable; urgency=low
+
+  [ Martin Pitt ]
+  * debian/tests/control: Drop trailing comma from test dependencies, which
+    causes autopkgtest to fail.
+
+  [ Simon Chopin ]
+  * New upstream release (Closes: #728526)
+    + Drop the reset-tmpdir-mode patch as the issue has been adressed upstream
+  * Bump the policy version to 3.9.5 (no changes needed)
+  * Bump copyright years and remove the paragraph for distribute_setup.py
+
+ -- Simon Chopin <chopin.simon@gmail.com>  Sun, 24 Nov 2013 22:47:17 +0100
+
+pytest (2.3.5-1) unstable; urgency=low
+
+  [ Jakub Wilk ]
+  * Use canonical URIs for Vcs-* fields.
+
+  [ Simon Chopin ]
+  * New upstream version (Closes: #707151)
+  * B-D on debhelper 8.1 to conform to Policy 3.9.4
+  * Add DEP-8 tests (Closes: #702121)
+  * Patch the tests to restore the permissions of the tmpdir used in tests
+
+  [ Sebastian Ramacher ]
+  * Upload to unstable.
+
+ -- Simon Chopin <chopin.simon@gmail.com>  Mon, 20 May 2013 20:31:42 +0200
+
+pytest (2.3.4-1~exp2) experimental; urgency=low
+
+  * Fix the version detection regexp to be less inclusive (Closes: #703351)
+  * Adjust the shebang replacement regexp in postinst and rtinstall.
+    Thanks to Roderich Schupp.
+  * Remove the doc build directory in the clean target (Closes: #702117)
+
+ -- Simon Chopin <chopin.simon@gmail.com>  Fri, 22 Mar 2013 14:24:48 +0100
+
+pytest (2.3.4-1~exp1) experimental; urgency=low
+
+  * Upload new upstream release to experimental (Closes: #699312)
+    + Update the patch paths to build only the English documentation
+  * Fix the permissions for the py.test-3 executable.
+  * Up the dependency on python-py to 1.4.11
+  * Add python(3)-nose, python-pexpect, python(3)-mock (>= 1.0.1)
+    and python-twisted-core as Build-Depends to skip less tests.
+  * Suggests python-mock (>= 1.0.1) in python-pytest
+  * Bump Standards-Version to 3.9.4, no change needed.
+  * Update copyright year.
+
+ -- Simon Chopin <chopin.simon@gmail.com>  Sat, 02 Mar 2013 17:13:20 +0100
+
+pytest (2.2.4-2) unstable; urgency=low
+
+  * Use rt{install, remove} mechanisms from the Python package to replace the
+    wrapper system. /usr/bin/py.test-X.Y will now be available only if the
+    corresponding python package is installed. Thanks to Jakub Wilk.
+
+ -- Simon Chopin <chopin.simon@gmail.com>  Sun, 24 Jun 2012 21:53:21 +0200
+
+pytest (2.2.4-1) unstable; urgency=low
+
+  * New upstream release
+  * Drop patch fix-grammar-manpage (included upstream)
+  * Bump the dependency to python[3]-py to >= 1.4.8
+
+ -- Simon Chopin <chopin.simon@gmail.com>  Sun, 03 Jun 2012 03:04:02 +0200
+
+pytest (2.2.3-3) unstable; urgency=low
+
+  * Fix the version detection in the wrapper (Closes: #668691)
+
+ -- Simon Chopin <chopin.simon@gmail.com>  Tue, 17 Apr 2012 12:56:18 +0200
+
+pytest (2.2.3-2) unstable; urgency=low
+
+  * Fix the shell wrapper (Closes: #668519)
+  * Use the wrapper for py.test and py3-test to simplify d/rules
+  * Enable test suite
+    + Uncomment the override_dh_auto_test target
+  * Build-Conflicts on old versions of python-pytest-xdist (<< 1.5)
+
+ -- Simon Chopin <chopin.simon@gmail.com>  Fri, 13 Apr 2012 20:34:00 +0200
+
+pytest (2.2.3-1) unstable; urgency=low
+
+  * Initial release (Closes: #664071)
+  * Disable the test suite for the bootstrap.
+
+ -- Simon Chopin <chopin.simon@gmail.com>  Wed, 11 Apr 2012 15:09:52 +0200

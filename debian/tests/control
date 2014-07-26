@@ -1,0 +1,16 @@
+Tests: unittests-python2
+Depends:
+ @,
+ python-all,
+ python-mock (>= 1.0.1),
+ python-nose,
+ python-pexpect,
+ python-pytest-xdist,
+ python-twisted-core
+
+Tests: unittests-python3
+Depends:
+ @,
+ python3-all,
+ python3-mock (>= 1.0.1),
+ python3-nose

@@ -1,0 +1,70 @@
+Source: pytest
+Section: python
+Priority: optional
+Maintainer: Debian Python Modules Team <python-modules-team@lists.alioth.debian.org>
+Uploaders: Simon Chopin <chopin.simon@gmail.com>
+Build-Depends:
+ debhelper (>= 8.1),
+ python-all (>= 2.6.6-3~),
+ python-py (>= 1.4.22),
+ python-twisted-core,
+ python-pexpect,
+ python-nose,
+ python-mock (>= 1.0.1),
+ python-setuptools,
+ python-sphinx (>= 1.0.7+dfsg),
+ python3-all (>= 3.1.2-6~),
+ python3-py (>= 1.4.22),
+ python3-nose,
+ python3-mock (>= 1.0.1),
+ python3-setuptools,
+ python-doc
+Build-Conflicts: python-pytest-xdist (<< 1.5)
+X-Python-Version: >= 2.4
+X-Python3-Version: >= 3.0
+Standards-Version: 3.9.5
+Homepage: http://pytest.org/
+Vcs-Svn: svn://anonscm.debian.org/python-modules/packages/pytest/trunk/
+Vcs-Browser: http://anonscm.debian.org/viewvc/python-modules/packages/pytest/trunk/
+XS-Testsuite: autopkgtest
+
+Package: python-pytest
+Architecture: all
+Depends:
+ python-pkg-resources,
+ python-py (>= 1.4.22),
+ ${misc:Depends},
+ ${python:Depends}
+Suggests: python-mock (>= 1.0.1)
+Breaks: python-py (<< 1.4)
+Replaces: python-py (<< 1.4)
+Description: Simple, powerful testing in Python
+ This testing tool has for objective to allow the developers to limit the
+ boilerplate code around the tests, promoting the use of built-in
+ mechanisms such as the `assert` keyword.
+
+Package: python3-pytest
+Architecture: all
+Depends:
+ python3-pkg-resources,
+ python3-py (>= 1.4.22),
+ ${misc:Depends},
+ ${python3:Depends}
+Description: Simple, powerful testing in Python3
+ This testing tool has for objective to allow the developers to limit the
+ boilerplate code around the tests, promoting the use of built-in
+ mechanisms such as the `assert` keyword.
+ .
+ This package provides the Python 3 module and the py3.test script.
+
+Package: python-pytest-doc
+Section: doc
+Architecture: all
+Depends: ${misc:Depends}, ${sphinxdoc:Depends}
+Recommends: python-pytest | python3-pytest
+Description: Simple, powerful testing in Python - Documentation
+ This testing tool has for objective to allow the developers to limit the
+ boilerplate code around the tests, promoting the use of built-in
+ mechanisms such as the `assert` keyword.
+ .
+ This package contains the documentation for pytest.

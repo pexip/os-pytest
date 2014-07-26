@@ -1,0 +1,7 @@
+#!/bin/sh
+set -e
+PYVERSION="${2##*python}"
+if [ ! -e "/usr/bin/py.test-$PYVERSION" ]; then
+    cp /usr/bin/py.test /usr/bin/py.test-$PYVERSION
+    sed -i "s,#! */usr/bin/python,#!/usr/bin/$2," /usr/bin/py.test-$PYVERSION
+fi

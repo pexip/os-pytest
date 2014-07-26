@@ -1,0 +1,66 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+PYVERS :=  $(shell pyversions -vr)
+PY3VERS := $(shell py3versions -vr)
+
+UPSTREAM = $(shell dpkg-parsechangelog | egrep "^Version: "| sed 's/Version: \(.*\)-.*/\1/' )
+
+%:
+	dh $@ --with python2,python3,sphinxdoc
+
+override_dh_auto_build:
+	# Build for all versions.
+	set -ex; \
+	for py in $(PYVERS) $(PY3VERS); do \
+		python$$py setup.py build; \
+	done
+	PYTHONPATH=`pwd` make -C doc/en man
+	cp doc/en/_build/man/pytest.1 debian/py.test.1
+	cp debian/py.test.1 debian/py.test-3.1
+	sed -i 's/PYTEST/PY.TEST/g' debian/py.test.1
+	sed -i 's/PYTEST/PY.TEST-3/g' debian/py.test-3.1
+	sed -i 's/py\.test/py.test-3/g' debian/py.test-3.1
+	PYTHONPATH=`pwd` make -C doc/en/ html
+
+override_dh_compress:
+	dh_compress -X.html
+
+override_dh_install:
+	# Only install for the default versions.
+	python setup.py install --skip-build --no-compile \
+							--root debian/python-pytest \
+							--install-layout=deb
+	rm debian/python-pytest/usr/bin/*
+	install -m 755 debian/py.test.template debian/python-pytest/usr/bin/py.test
+	sed -i 's/#UPSTREAMVERSION#/$(UPSTREAM)/' debian/python-pytest/usr/bin/py.test
+	sed -i 's,#PYSHEBANG#,#!/usr/bin/python,' debian/python-pytest/usr/bin/py.test
+	python3 setup.py install --skip-build --no-compile \
+								--root debian/python3-pytest \
+								--install-layout=deb
+	rm debian/python3-pytest/usr/bin/*
+	install -m 755 debian/py.test.template debian/python3-pytest/usr/bin/py.test-3
+	sed -i 's/#UPSTREAMVERSION#/$(UPSTREAM)/' debian/python3-pytest/usr/bin/py.test-3
+	sed -i 's,#PYSHEBANG#,#!/usr/bin/python3,' debian/python3-pytest/usr/bin/py.test-3
+	dh_install
+
+override_dh_auto_clean:
+	rm -rf doc/en/_build build pytest.egg-info
+	find . \( -name '*.py[oc]' -o -name __pycache__ \) -delete
+	dh_auto_clean
+
+override_dh_clean:
+	rm debian/py.test.1 debian/py.test-3.1 -f
+	dh_clean
+
+override_dh_auto_test:
+ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
+	set -ex; \
+	for py in $(PYVERS) $(PY3VERS); do \
+		PYTHONPATH=$(CURDIR) python$$py -m pytest testing ; \
+	done
+endif
+

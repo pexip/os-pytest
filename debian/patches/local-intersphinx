@@ -1,0 +1,17 @@
+Description: Use objects.inv from python-doc
+Author: Sebastian Ramacher <sramacher@debian.org>
+Bug-Debian: https://bugs.debian.org/739406
+Last-Update: 2014-07-26
+
+--- pytest-2.6.0.orig/doc/en/conf.py
++++ pytest-2.6.0/doc/en/conf.py
+@@ -310,7 +310,8 @@ texinfo_documents = [
+ 
+ 
+ # Example configuration for intersphinx: refer to the Python standard library.
+-intersphinx_mapping = {'python': ('http://docs.python.org/', None),
++intersphinx_mapping = {'python': ('http://docs.python.org/',
++                                  '/usr/share/doc/python-doc/html/objects.inv'),
+ #                       'lib': ("http://docs.python.org/2.7library/", None),
+                     }
+ 

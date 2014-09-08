@@ -1,8 +1,9 @@
 Source: pytest
 Section: python
 Priority: optional
-Maintainer: Debian Python Modules Team <python-modules-team@lists.alioth.debian.org>
-Uploaders: Simon Chopin <chopin.simon@gmail.com>
+Maintainer: Pexip AS <packaging@pexip.com>
+XSBC-Pexip-Original-Maintainer: Debian Python Modules Team <python-modules-team@lists.alioth.debian.org>
+XSBC-Pexip-Original-Uploaders: Simon Chopin <chopin.simon@gmail.com>
 Build-Depends:
  debhelper (>= 8.1),
  python-all (>= 2.6.6-3~),
@@ -27,6 +28,7 @@ Homepage: http://pytest.org/
 Vcs-Svn: svn://anonscm.debian.org/python-modules/packages/pytest/trunk/
 Vcs-Browser: http://anonscm.debian.org/viewvc/python-modules/packages/pytest/trunk/
 XS-Testsuite: autopkgtest
+XS-Pexip-Upstream: http://ftp.debian.org/debian/ jessie
 
 Package: python-pytest
 Architecture: all

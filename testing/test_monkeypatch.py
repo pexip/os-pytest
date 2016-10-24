@@ -1,8 +1,13 @@
-import os, sys
-import pytest
-from _pytest.monkeypatch import monkeypatch as MonkeyPatch
+import os
+import sys
+import textwrap
 
-def pytest_funcarg__mp(request):
+import pytest
+from _pytest.monkeypatch import MonkeyPatch
+
+
+@pytest.fixture
+def mp(request):
     cwd = os.getcwd()
     sys_path = list(sys.path)
 
@@ -13,9 +18,11 @@ def pytest_funcarg__mp(request):
     request.addfinalizer(cleanup)
     return MonkeyPatch()
 
+
 def test_setattr():
     class A:
         x = 1
+
     monkeypatch = MonkeyPatch()
     pytest.raises(AttributeError, "monkeypatch.setattr(A, 'notexists', 2)")
     monkeypatch.setattr(A, 'y', 2, raising=False)
@@ -32,8 +39,9 @@ def test_setattr():
     assert A.x == 1
 
     A.x = 5
-    monkeypatch.undo() # double-undo makes no modification
+    monkeypatch.undo()  # double-undo makes no modification
     assert A.x == 5
+
 
 class TestSetattrWithImportPath:
     def test_string_expression(self, monkeypatch):
@@ -55,12 +63,17 @@ class TestSetattrWithImportPath:
         pytest.raises(TypeError, lambda: monkeypatch.setattr(None, None))
 
     def test_unknown_import(self, monkeypatch):
-        pytest.raises(pytest.fail.Exception,
+        pytest.raises(ImportError,
                       lambda: monkeypatch.setattr("unkn123.classx", None))
 
     def test_unknown_attr(self, monkeypatch):
-        pytest.raises(pytest.fail.Exception,
+        pytest.raises(AttributeError,
                       lambda: monkeypatch.setattr("os.path.qweqwe", None))
+
+    def test_unknown_attr_non_raising(self, monkeypatch):
+        # https://github.com/pytest-dev/pytest/issues/746
+        monkeypatch.setattr('os.path.qweqwe', 42, raising=False)
+        assert os.path.qweqwe == 42
 
     def test_delattr(self, monkeypatch):
         monkeypatch.delattr("os.path.abspath")
@@ -68,9 +81,11 @@ class TestSetattrWithImportPath:
         monkeypatch.undo()
         assert os.path.abspath
 
+
 def test_delattr():
     class A:
         x = 1
+
     monkeypatch = MonkeyPatch()
     monkeypatch.delattr(A, 'x')
     assert not hasattr(A, 'x')
@@ -85,6 +100,7 @@ def test_delattr():
     assert A.x == 5
     monkeypatch.undo()
     assert A.x == 1
+
 
 def test_setitem():
     d = {'x': 1}
@@ -103,6 +119,7 @@ def test_setitem():
     monkeypatch.undo()
     assert d['x'] == 5
 
+
 def test_setitem_deleted_meanwhile():
     d = {}
     monkeypatch = MonkeyPatch()
@@ -110,6 +127,7 @@ def test_setitem_deleted_meanwhile():
     del d['x']
     monkeypatch.undo()
     assert not d
+
 
 @pytest.mark.parametrize("before", [True, False])
 def test_setenv_deleted_meanwhile(before):
@@ -125,6 +143,7 @@ def test_setenv_deleted_meanwhile(before):
         del os.environ[key]
     else:
         assert key not in os.environ
+
 
 def test_delitem():
     d = {'x': 1}
@@ -142,6 +161,7 @@ def test_delitem():
     monkeypatch.undo()
     assert d == {'hello': 'world', 'x': 1}
 
+
 def test_setenv():
     monkeypatch = MonkeyPatch()
     monkeypatch.setenv('XYZ123', 2)
@@ -149,6 +169,7 @@ def test_setenv():
     assert os.environ['XYZ123'] == "2"
     monkeypatch.undo()
     assert 'XYZ123' not in os.environ
+
 
 def test_delenv():
     name = 'xyz1234'
@@ -170,6 +191,7 @@ def test_delenv():
         if name in os.environ:
             del os.environ[name]
 
+
 def test_setenv_prepend():
     import os
     monkeypatch = MonkeyPatch()
@@ -180,13 +202,15 @@ def test_setenv_prepend():
     monkeypatch.undo()
     assert 'XYZ123' not in os.environ
 
+
 def test_monkeypatch_plugin(testdir):
     reprec = testdir.inline_runsource("""
         def test_method(monkeypatch):
-            assert monkeypatch.__class__.__name__ == "monkeypatch"
+            assert monkeypatch.__class__.__name__ == "MonkeyPatch"
     """)
     res = reprec.countoutcomes()
     assert tuple(res) == (1, 0, 0), res
+
 
 def test_syspath_prepend(mp):
     old = list(sys.path)
@@ -199,6 +223,7 @@ def test_syspath_prepend(mp):
     mp.undo()
     assert sys.path == old
 
+
 def test_syspath_prepend_double_undo(mp):
     mp.syspath_prepend('hello world')
     mp.undo()
@@ -206,13 +231,16 @@ def test_syspath_prepend_double_undo(mp):
     mp.undo()
     assert sys.path[-1] == 'more hello world'
 
+
 def test_chdir_with_path_local(mp, tmpdir):
     mp.chdir(tmpdir)
     assert os.getcwd() == tmpdir.strpath
 
+
 def test_chdir_with_str(mp, tmpdir):
     mp.chdir(tmpdir.strpath)
     assert os.getcwd() == tmpdir.strpath
+
 
 def test_chdir_undo(mp, tmpdir):
     cwd = os.getcwd()
@@ -220,12 +248,14 @@ def test_chdir_undo(mp, tmpdir):
     mp.undo()
     assert os.getcwd() == cwd
 
+
 def test_chdir_double_undo(mp, tmpdir):
     mp.chdir(tmpdir.strpath)
     mp.undo()
     tmpdir.chdir()
     mp.undo()
     assert os.getcwd() == tmpdir.strpath
+
 
 def test_issue185_time_breaks(testdir):
     testdir.makepyfile("""
@@ -241,6 +271,22 @@ def test_issue185_time_breaks(testdir):
     """)
 
 
+def test_importerror(testdir):
+    p = testdir.mkpydir("package")
+    p.join("a.py").write(textwrap.dedent("""\
+        import doesnotexist
+
+        x = 1
+    """))
+    testdir.tmpdir.join("test_importerror.py").write(textwrap.dedent("""\
+        def test_importerror(monkeypatch):
+            monkeypatch.setattr('package.a.x', 2)
+    """))
+    result = testdir.runpytest()
+    result.stdout.fnmatch_lines("""
+        *import error in package.a: No module named {0}doesnotexist{0}*
+    """.format("'" if sys.version_info > (3, 0) else ""))
+
 
 class SampleNew(object):
     @staticmethod
@@ -253,10 +299,11 @@ class SampleNewInherit(SampleNew):
 
 
 class SampleOld:
-    #oldstyle on python2
+    # oldstyle on python2
     @staticmethod
     def hello():
         return True
+
 
 class SampleOldInherit(SampleOld):
     pass
@@ -274,5 +321,13 @@ def test_issue156_undo_staticmethod(Sample):
 
     monkeypatch.undo()
     assert Sample.hello()
+
+def test_issue1338_name_resolving():
+    pytest.importorskip('requests')
+    monkeypatch = MonkeyPatch()
+    try:
+         monkeypatch.delattr('requests.sessions.Session.request')
+    finally:
+        monkeypatch.undo()
 
 

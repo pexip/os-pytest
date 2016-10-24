@@ -1,5 +1,0 @@
-#PYSHEBANG#
-
-import sys
-from pkg_resources import load_entry_point
-sys.exit(load_entry_point('pytest==#UPSTREAMVERSION#', 'console_scripts', 'py.test')())

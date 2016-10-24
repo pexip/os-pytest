@@ -34,18 +34,19 @@ class TestRaises:
             raise BuiltinAssertionError
         """)
 
-    @pytest.mark.skipif('sys.version < "2.5"')
     def test_raises_as_contextmanager(self, testdir):
         testdir.makepyfile("""
             from __future__ import with_statement
             import py, pytest
+            import _pytest._code
 
             def test_simple():
                 with pytest.raises(ZeroDivisionError) as excinfo:
-                    assert isinstance(excinfo, py.code.ExceptionInfo)
+                    assert isinstance(excinfo, _pytest._code.ExceptionInfo)
                     1/0
                 print (excinfo)
                 assert excinfo.type == ZeroDivisionError
+                assert isinstance(excinfo.value, ZeroDivisionError)
 
             def test_noraise():
                 with pytest.raises(pytest.raises.Exception):
@@ -69,3 +70,29 @@ class TestRaises:
     def test_tuple(self):
         with pytest.raises((KeyError, ValueError)):
             raise KeyError('oops')
+
+    def test_no_raise_message(self):
+        try:
+            pytest.raises(ValueError, int, '0')
+        except pytest.raises.Exception as e:
+            assert e.msg == "DID NOT RAISE {0}".format(repr(ValueError))
+        else:
+            assert False, "Expected pytest.raises.Exception"
+
+        try:
+            with pytest.raises(ValueError):
+                pass
+        except pytest.raises.Exception as e:
+            assert e.msg == "DID NOT RAISE {0}".format(repr(ValueError))
+        else:
+            assert False, "Expected pytest.raises.Exception"
+
+    def test_custom_raise_message(self):
+        message = "TEST_MESSAGE"
+        try:
+            with pytest.raises(ValueError, message=message):
+                pass
+        except pytest.raises.Exception as e:
+            assert e.msg == message
+        else:
+            assert False, "Expected pytest.raises.Exception"

@@ -1,5 +1,5 @@
-import py, pytest
-from _pytest.helpconfig import collectattr
+from _pytest.main import EXIT_NOTESTSCOLLECTED
+import pytest
 
 def test_version(testdir, pytestconfig):
     result = testdir.runpytest("--version")
@@ -8,7 +8,7 @@ def test_version(testdir, pytestconfig):
     result.stderr.fnmatch_lines([
         '*pytest*%s*imported from*' % (pytest.__version__, )
     ])
-    if pytestconfig.pluginmanager._plugin_distinfo:
+    if pytestconfig.pluginmanager.list_plugin_distinfo():
         result.stderr.fnmatch_lines([
             "*setuptools registered plugins:",
             "*at*",
@@ -21,21 +21,9 @@ def test_help(testdir):
         *-v*verbose*
         *setup.cfg*
         *minversion*
-        *to see*markers*py.test --markers*
-        *to see*fixtures*py.test --fixtures*
+        *to see*markers*pytest --markers*
+        *to see*fixtures*pytest --fixtures*
     """)
-
-def test_collectattr():
-    class A:
-        def pytest_hello(self):
-            pass
-    class B(A):
-        def pytest_world(self):
-            pass
-    methods = py.builtin.sorted(collectattr(B))
-    assert list(methods) == ['pytest_hello', 'pytest_world']
-    methods = py.builtin.sorted(collectattr(B()))
-    assert list(methods) == ['pytest_hello', 'pytest_world']
 
 def test_hookvalidation_unknown(testdir):
     testdir.makeconftest("""
@@ -51,12 +39,12 @@ def test_hookvalidation_unknown(testdir):
 def test_hookvalidation_optional(testdir):
     testdir.makeconftest("""
         import pytest
-        @pytest.mark.optionalhook
+        @pytest.hookimpl(optionalhook=True)
         def pytest_hello(xyz):
             pass
     """)
     result = testdir.runpytest()
-    assert result.ret == 0
+    assert result.ret == EXIT_NOTESTSCOLLECTED
 
 def test_traceconfig(testdir):
     result = testdir.runpytest("--traceconfig")
@@ -66,15 +54,15 @@ def test_traceconfig(testdir):
     ])
 
 def test_debug(testdir, monkeypatch):
-    result = testdir.runpytest("--debug")
-    assert result.ret == 0
+    result = testdir.runpytest_subprocess("--debug")
+    assert result.ret == EXIT_NOTESTSCOLLECTED
     p = testdir.tmpdir.join("pytestdebug.log")
     assert "pytest_sessionstart" in p.read()
 
 def test_PYTEST_DEBUG(testdir, monkeypatch):
     monkeypatch.setenv("PYTEST_DEBUG", "1")
-    result = testdir.runpytest()
-    assert result.ret == 0
+    result = testdir.runpytest_subprocess()
+    assert result.ret == EXIT_NOTESTSCOLLECTED
     result.stderr.fnmatch_lines([
         "*pytest_plugin_registered*",
         "*manager*PluginManager*"

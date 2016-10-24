@@ -1,9 +1,9 @@
+from _pytest.main import EXIT_NOTESTSCOLLECTED
 import pytest
 
 def test_simple_unittest(testdir):
     testpath = testdir.makepyfile("""
         import unittest
-        pytest_plugins = "pytest_unittest"
         class MyTestCase(unittest.TestCase):
             def testpassing(self):
                 self.assertEquals('foo', 'foo')
@@ -17,7 +17,6 @@ def test_simple_unittest(testdir):
 def test_runTest_method(testdir):
     testdir.makepyfile("""
         import unittest
-        pytest_plugins = "pytest_unittest"
         class MyTestCaseWithRunTest(unittest.TestCase):
             def runTest(self):
                 self.assertEquals('foo', 'foo')
@@ -43,7 +42,7 @@ def test_isclasscheck_issue53(testdir):
         E = _E()
     """)
     result = testdir.runpytest(testpath)
-    assert result.ret == 0
+    assert result.ret == EXIT_NOTESTSCOLLECTED
 
 def test_setup(testdir):
     testpath = testdir.makepyfile("""
@@ -261,16 +260,17 @@ def test_testcase_custom_exception_info(testdir, type):
     testdir.makepyfile("""
         from unittest import TestCase
         import py, pytest
+        import _pytest._code
         class MyTestCase(TestCase):
             def run(self, result):
                 excinfo = pytest.raises(ZeroDivisionError, lambda: 0/0)
                 # we fake an incompatible exception info
-                from _pytest.monkeypatch import monkeypatch
-                mp = monkeypatch()
+                from _pytest.monkeypatch import MonkeyPatch
+                mp = MonkeyPatch()
                 def t(*args):
                     mp.undo()
                     raise TypeError()
-                mp.setattr(py.code, 'ExceptionInfo', t)
+                mp.setattr(_pytest._code, 'ExceptionInfo', t)
                 try:
                     excinfo = excinfo._excinfo
                     result.add%(type)s(self, excinfo)
@@ -419,8 +419,9 @@ class TestTrialUnittest:
                 def test_method(self):
                     pass
         """)
+        from _pytest.compat import _is_unittest_unexpected_success_a_failure
+        should_fail = _is_unittest_unexpected_success_a_failure()
         result = testdir.runpytest("-rxs")
-        assert result.ret == 0
         result.stdout.fnmatch_lines_random([
             "*XFAIL*test_trial_todo*",
             "*trialselfskip*",
@@ -429,8 +430,9 @@ class TestTrialUnittest:
             "*i2wanto*",
             "*sys.version_info*",
             "*skip_in_method*",
-            "*4 skipped*3 xfail*1 xpass*",
+            "*1 failed*4 skipped*3 xfailed*" if should_fail else "*4 skipped*3 xfail*1 xpass*",
         ])
+        assert result.ret == (1 if should_fail else 0)
 
     def test_trial_error(self, testdir):
         testdir.makepyfile("""
@@ -574,7 +576,7 @@ def test_unorderable_types(testdir):
     """)
     result = testdir.runpytest()
     assert "TypeError" not in result.stdout.str()
-    assert result.ret == 0
+    assert result.ret == EXIT_NOTESTSCOLLECTED
 
 def test_unittest_typerror_traceback(testdir):
     testdir.makepyfile("""
@@ -587,38 +589,81 @@ def test_unittest_typerror_traceback(testdir):
     assert "TypeError" in result.stdout.str()
     assert result.ret == 1
 
+
 @pytest.mark.skipif("sys.version_info < (2,7)")
-def test_unittest_unexpected_failure(testdir):
-    testdir.makepyfile("""
+@pytest.mark.parametrize('runner', ['pytest', 'unittest'])
+def test_unittest_expected_failure_for_failing_test_is_xfail(testdir, runner):
+    script = testdir.makepyfile("""
         import unittest
         class MyTestCase(unittest.TestCase):
             @unittest.expectedFailure
-            def test_func1(self):
-                assert 0
-            @unittest.expectedFailure
-            def test_func2(self):
-                assert 1
+            def test_failing_test_is_xfail(self):
+                assert False
+        if __name__ == '__main__':
+            unittest.main()
     """)
-    result = testdir.runpytest("-rxX")
-    result.stdout.fnmatch_lines([
-        "*XFAIL*MyTestCase*test_func1*",
-        "*XPASS*MyTestCase*test_func2*",
-        "*1 xfailed*1 xpass*",
-    ])
+    if runner == 'pytest':
+        result = testdir.runpytest("-rxX")
+        result.stdout.fnmatch_lines([
+            "*XFAIL*MyTestCase*test_failing_test_is_xfail*",
+            "*1 xfailed*",
+        ])
+    else:
+        result = testdir.runpython(script)
+        result.stderr.fnmatch_lines([
+            "*1 test in*",
+            "*OK*(expected failures=1)*",
+        ])
+    assert result.ret == 0
 
 
+@pytest.mark.skipif("sys.version_info < (2,7)")
+@pytest.mark.parametrize('runner', ['pytest', 'unittest'])
+def test_unittest_expected_failure_for_passing_test_is_fail(testdir, runner):
+    script = testdir.makepyfile("""
+        import unittest
+        class MyTestCase(unittest.TestCase):
+            @unittest.expectedFailure
+            def test_passing_test_is_fail(self):
+                assert True
+        if __name__ == '__main__':
+            unittest.main()
+    """)
+    from _pytest.compat import _is_unittest_unexpected_success_a_failure
+    should_fail = _is_unittest_unexpected_success_a_failure()
+    if runner == 'pytest':
+        result = testdir.runpytest("-rxX")
+        result.stdout.fnmatch_lines([
+            "*MyTestCase*test_passing_test_is_fail*",
+            "*1 failed*" if should_fail else "*1 xpassed*",
+        ])
+    else:
+        result = testdir.runpython(script)
+        result.stderr.fnmatch_lines([
+            "*1 test in*",
+            "*(unexpected successes=1)*",
+        ])
 
-def test_unittest_setup_interaction(testdir):
+    assert result.ret == (1 if should_fail else 0)
+
+
+@pytest.mark.parametrize('fix_type, stmt', [
+    ('fixture', 'return'),
+    ('yield_fixture', 'yield'),
+])
+def test_unittest_setup_interaction(testdir, fix_type, stmt):
     testdir.makepyfile("""
         import unittest
         import pytest
         class MyTestCase(unittest.TestCase):
-            @pytest.fixture(scope="class", autouse=True)
+            @pytest.{fix_type}(scope="class", autouse=True)
             def perclass(self, request):
                 request.cls.hello = "world"
-            @pytest.fixture(scope="function", autouse=True)
+                {stmt}
+            @pytest.{fix_type}(scope="function", autouse=True)
             def perfunction(self, request):
                 request.instance.funcname = request.function.__name__
+                {stmt}
 
             def test_method1(self):
                 assert self.funcname == "test_method1"
@@ -629,7 +674,7 @@ def test_unittest_setup_interaction(testdir):
 
             def test_classattr(self):
                 assert self.__class__.hello == "world"
-    """)
+    """.format(fix_type=fix_type, stmt=stmt))
     result = testdir.runpytest()
     result.stdout.fnmatch_lines("*3 passed*")
 
@@ -700,4 +745,47 @@ def test_issue333_result_clearing(testdir):
     reprec = testdir.inline_run()
     reprec.assertoutcome(failed=1)
 
+@pytest.mark.skipif("sys.version_info < (2,7)")
+def test_unittest_raise_skip_issue748(testdir):
+    testdir.makepyfile(test_foo="""
+        import unittest
 
+        class MyTestCase(unittest.TestCase):
+            def test_one(self):
+                raise unittest.SkipTest('skipping due to reasons')
+    """)
+    result = testdir.runpytest("-v", '-rs')
+    result.stdout.fnmatch_lines("""
+        *SKIP*[1]*test_foo.py*skipping due to reasons*
+        *1 skipped*
+    """)
+
+@pytest.mark.skipif("sys.version_info < (2,7)")
+def test_unittest_skip_issue1169(testdir):
+    testdir.makepyfile(test_foo="""
+        import unittest
+        
+        class MyTestCase(unittest.TestCase):
+            @unittest.skip("skipping due to reasons")
+            def test_skip(self):
+                 self.fail()
+        """)
+    result = testdir.runpytest("-v", '-rs')
+    result.stdout.fnmatch_lines("""
+        *SKIP*[1]*skipping due to reasons*
+        *1 skipped*
+    """)
+
+def test_class_method_containing_test_issue1558(testdir):
+    testdir.makepyfile(test_foo="""
+        import unittest
+
+        class MyTestCase(unittest.TestCase):
+            def test_should_run(self):
+                pass
+            def test_should_not_run(self):
+                pass
+            test_should_not_run.__test__ = False
+    """)
+    reprec = testdir.inline_run()
+    reprec.assertoutcome(passed=1)

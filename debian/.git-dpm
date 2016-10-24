@@ -1,0 +1,11 @@
+# see git-dpm(1) from git-dpm package
+5a235d49c4a23d707a3d257ff7c086804f2e2569
+5a235d49c4a23d707a3d257ff7c086804f2e2569
+4258035b4ba1fcc9844bc8f259c4a04e49b47001
+4258035b4ba1fcc9844bc8f259c4a04e49b47001
+pytest_3.0.3.orig.tar.gz
+e7fb899ecac031a84e66f991289203d3c1f7c6cb
+731934
+debianTag="debian/%e%v"
+patchedTag="patched/%e%v"
+upstreamTag="upstream/%e%u"

@@ -7,8 +7,8 @@ def test_failure_demo_fails_properly(testdir):
     target = testdir.tmpdir.join(failure_demo.basename)
     failure_demo.copy(target)
     failure_demo.copy(testdir.tmpdir.join(failure_demo.basename))
-    result = testdir.runpytest(target)
+    result = testdir.runpytest(target, syspathinsert=True)
     result.stdout.fnmatch_lines([
-        "*39 failed*"
+        "*42 failed*"
     ])
     assert result.ret != 0

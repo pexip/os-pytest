@@ -1,6 +1,6 @@
 import pytest, py
 
-from _pytest.main import Session
+from _pytest.main import Session, EXIT_NOTESTSCOLLECTED
 
 class TestCollector:
     def test_collect_versus_item(self):
@@ -88,6 +88,8 @@ class TestCollector:
 class TestCollectFS:
     def test_ignored_certain_directories(self, testdir):
         tmpdir = testdir.tmpdir
+        tmpdir.ensure("build", 'test_notfound.py')
+        tmpdir.ensure("dist", 'test_notfound.py')
         tmpdir.ensure("_darcs", 'test_notfound.py')
         tmpdir.ensure("CVS", 'test_notfound.py')
         tmpdir.ensure("{arch}", 'test_notfound.py')
@@ -116,12 +118,43 @@ class TestCollectFS:
         rec = testdir.inline_run("xyz123/test_2.py")
         rec.assertoutcome(failed=1)
 
+    def test_testpaths_ini(self, testdir, monkeypatch):
+        testdir.makeini("""
+            [pytest]
+            testpaths = gui uts
+        """)
+        tmpdir = testdir.tmpdir
+        tmpdir.ensure("env", "test_1.py").write("def test_env(): pass")
+        tmpdir.ensure("gui", "test_2.py").write("def test_gui(): pass")
+        tmpdir.ensure("uts", "test_3.py").write("def test_uts(): pass")
+
+        # executing from rootdir only tests from `testpaths` directories
+        # are collected
+        items, reprec = testdir.inline_genitems('-v')
+        assert [x.name for x in items] == ['test_gui', 'test_uts']
+
+        # check that explicitly passing directories in the command-line
+        # collects the tests
+        for dirname in ('env', 'gui', 'uts'):
+            items, reprec = testdir.inline_genitems(tmpdir.join(dirname))
+            assert [x.name for x in items] == ['test_%s' % dirname]
+
+        # changing cwd to each subdirectory and running pytest without
+        # arguments collects the tests in that directory normally
+        for dirname in ('env', 'gui', 'uts'):
+            monkeypatch.chdir(testdir.tmpdir.join(dirname))
+            items, reprec = testdir.inline_genitems()
+            assert [x.name for x in items] == ['test_%s' % dirname]
+
+
 class TestCollectPluginHookRelay:
     def test_pytest_collect_file(self, testdir):
         wascalled = []
         class Plugin:
             def pytest_collect_file(self, path, parent):
-                wascalled.append(path)
+                if not path.basename.startswith("."):
+                    # Ignore hidden files, e.g. .testmondata.
+                    wascalled.append(path)
         testdir.makefile(".abc", "xyz")
         pytest.main([testdir.tmpdir], plugins=[Plugin()])
         assert len(wascalled) == 1
@@ -147,7 +180,8 @@ class TestPrunetraceback:
         assert "__import__" not in result.stdout.str(), "too long traceback"
         result.stdout.fnmatch_lines([
             "*ERROR collecting*",
-            "*mport*not_exists*"
+            "ImportError while importing test module*",
+            "'No module named *not_exists*",
         ])
 
     def test_custom_repr_failure(self, testdir):
@@ -218,10 +252,10 @@ class TestCustomConftests:
         p = testdir.makepyfile("def test_hello(): pass")
         result = testdir.runpytest(p)
         assert result.ret == 0
-        assert "1 passed" in result.stdout.str()
+        result.stdout.fnmatch_lines("*1 passed*")
         result = testdir.runpytest()
-        assert result.ret == 0
-        assert "1 passed" not in result.stdout.str()
+        assert result.ret == EXIT_NOTESTSCOLLECTED
+        result.stdout.fnmatch_lines("*collected 0 items*")
 
     def test_collectignore_exclude_on_option(self, testdir):
         testdir.makeconftest("""
@@ -235,7 +269,7 @@ class TestCustomConftests:
         testdir.mkdir("hello")
         testdir.makepyfile(test_world="def test_hello(): pass")
         result = testdir.runpytest()
-        assert result.ret == 0
+        assert result.ret == EXIT_NOTESTSCOLLECTED
         assert "passed" not in result.stdout.str()
         result = testdir.runpytest("--XX")
         assert result.ret == 0
@@ -296,7 +330,6 @@ class TestSession:
         subdir.ensure("__init__.py")
         target = subdir.join(p.basename)
         p.move(target)
-        testdir.chdir()
         subdir.chdir()
         config = testdir.parseconfig(p.basename)
         rcol = Session(config=config)
@@ -313,7 +346,7 @@ class TestSession:
     def test_collect_topdir(self, testdir):
         p = testdir.makepyfile("def test_func(): pass")
         id = "::".join([p.basename, "test_func"])
-        # XXX migrate to inline_genitems? (see below)
+        # XXX migrate to collectonly? (see below)
         config = testdir.parseconfig(id)
         topdir = testdir.tmpdir
         rcol = Session(config)
@@ -334,16 +367,16 @@ class TestSession:
         assert item.name == "test_func"
         newid = item.nodeid
         assert newid == id
-        py.std.pprint.pprint(hookrec.hookrecorder.calls)
+        py.std.pprint.pprint(hookrec.calls)
         topdir = testdir.tmpdir  # noqa
-        hookrec.hookrecorder.contains([
+        hookrec.assert_contains([
             ("pytest_collectstart", "collector.fspath == topdir"),
             ("pytest_make_collect_report", "collector.fspath == topdir"),
             ("pytest_collectstart", "collector.fspath == p"),
             ("pytest_make_collect_report", "collector.fspath == p"),
             ("pytest_pycollect_makeitem", "name == 'test_func'"),
             ("pytest_collectreport", "report.nodeid.startswith(p.basename)"),
-            ("pytest_collectreport", "report.nodeid == '.'")
+            ("pytest_collectreport", "report.nodeid == ''")
         ])
 
     def test_collect_protocol_method(self, testdir):
@@ -381,9 +414,9 @@ class TestSession:
         id = p.basename
 
         items, hookrec = testdir.inline_genitems(id)
-        py.std.pprint.pprint(hookrec.hookrecorder.calls)
+        py.std.pprint.pprint(hookrec.calls)
         assert len(items) == 2
-        hookrec.hookrecorder.contains([
+        hookrec.assert_contains([
             ("pytest_collectstart",
                 "collector.fspath == collector.session.fspath"),
             ("pytest_collectstart",
@@ -404,8 +437,8 @@ class TestSession:
 
         items, hookrec = testdir.inline_genitems()
         assert len(items) == 1
-        py.std.pprint.pprint(hookrec.hookrecorder.calls)
-        hookrec.hookrecorder.contains([
+        py.std.pprint.pprint(hookrec.calls)
+        hookrec.assert_contains([
             ("pytest_collectstart", "collector.fspath == test_aaa"),
             ("pytest_pycollect_makeitem", "name == 'test_func'"),
             ("pytest_collectreport",
@@ -425,8 +458,8 @@ class TestSession:
 
         items, hookrec = testdir.inline_genitems(id)
         assert len(items) == 2
-        py.std.pprint.pprint(hookrec.hookrecorder.calls)
-        hookrec.hookrecorder.contains([
+        py.std.pprint.pprint(hookrec.calls)
+        hookrec.assert_contains([
             ("pytest_collectstart", "collector.fspath == test_aaa"),
             ("pytest_pycollect_makeitem", "name == 'test_func'"),
             ("pytest_collectreport", "report.nodeid == 'aaa/test_aaa.py'"),
@@ -460,7 +493,8 @@ class TestSession:
 class Test_getinitialnodes:
     def test_global_file(self, testdir, tmpdir):
         x = tmpdir.ensure("x.py")
-        config = testdir.parseconfigure(x)
+        with tmpdir.as_cwd():
+            config = testdir.parseconfigure(x)
         col = testdir.getnode(config, x)
         assert isinstance(col, pytest.Module)
         assert col.name == 'x.py'
@@ -470,15 +504,15 @@ class Test_getinitialnodes:
             assert col.config is config
 
     def test_pkgfile(self, testdir):
-        testdir.chdir()
         tmpdir = testdir.tmpdir
         subdir = tmpdir.join("subdir")
         x = subdir.ensure("x.py")
         subdir.ensure("__init__.py")
-        config = testdir.parseconfigure(x)
+        with subdir.as_cwd():
+            config = testdir.parseconfigure(x)
         col = testdir.getnode(config, x)
         assert isinstance(col, pytest.Module)
-        assert col.name == 'subdir/x.py'
+        assert col.name == 'x.py'
         assert col.parent.parent is None
         for col in col.listchain():
             assert col.config is config
@@ -527,6 +561,30 @@ class Test_genitems:
         s = items[0].getmodpath(stopatmodule=False)
         assert s.endswith("test_example_items1.testone")
         print(s)
+
+    def test_class_and_functions_discovery_using_glob(self, testdir):
+        """
+        tests that python_classes and python_functions config options work
+        as prefixes and glob-like patterns (issue #600).
+        """
+        testdir.makeini("""
+            [pytest]
+            python_classes = *Suite Test
+            python_functions = *_test test
+        """)
+        p = testdir.makepyfile('''
+            class MyTestSuite:
+                def x_test(self):
+                    pass
+
+            class TestCase:
+                def test_y(self):
+                    pass
+        ''')
+        items, reprec = testdir.inline_genitems(p)
+        ids = [x.getmodpath() for x in items]
+        assert ids == ['MyTestSuite.x_test', 'TestCase.test_y']
+
 
 def test_matchnodes_two_collections_same_file(testdir):
     testdir.makeconftest("""
@@ -588,3 +646,114 @@ class TestNodekeywords:
         """)
         reprec = testdir.inline_run("-k repr")
         reprec.assertoutcome(passed=1, failed=0)
+
+
+COLLECTION_ERROR_PY_FILES = dict(
+    test_01_failure="""
+        def test_1():
+            assert False
+        """,
+    test_02_import_error="""
+        import asdfasdfasdf
+        def test_2():
+            assert True
+        """,
+    test_03_import_error="""
+        import asdfasdfasdf
+        def test_3():
+            assert True
+    """,
+    test_04_success="""
+        def test_4():
+            assert True
+    """,
+)
+
+def test_exit_on_collection_error(testdir):
+    """Verify that all collection errors are collected and no tests executed"""
+    testdir.makepyfile(**COLLECTION_ERROR_PY_FILES)
+
+    res = testdir.runpytest()
+    assert res.ret == 2
+
+    res.stdout.fnmatch_lines([
+        "collected 2 items / 2 errors",
+        "*ERROR collecting test_02_import_error.py*",
+        "*No module named *asdfa*",
+        "*ERROR collecting test_03_import_error.py*",
+        "*No module named *asdfa*",
+    ])
+
+
+def test_exit_on_collection_with_maxfail_smaller_than_n_errors(testdir):
+    """
+    Verify collection is aborted once maxfail errors are encountered ignoring
+    further modules which would cause more collection errors.
+    """
+    testdir.makepyfile(**COLLECTION_ERROR_PY_FILES)
+
+    res = testdir.runpytest("--maxfail=1")
+    assert res.ret == 2
+
+    res.stdout.fnmatch_lines([
+        "*ERROR collecting test_02_import_error.py*",
+        "*No module named *asdfa*",
+        "*Interrupted: stopping after 1 failures*",
+    ])
+
+    assert 'test_03' not in res.stdout.str()
+
+
+def test_exit_on_collection_with_maxfail_bigger_than_n_errors(testdir):
+    """
+    Verify the test run aborts due to collection errors even if maxfail count of
+    errors was not reached.
+    """
+    testdir.makepyfile(**COLLECTION_ERROR_PY_FILES)
+
+    res = testdir.runpytest("--maxfail=4")
+    assert res.ret == 2
+
+    res.stdout.fnmatch_lines([
+        "collected 2 items / 2 errors",
+        "*ERROR collecting test_02_import_error.py*",
+        "*No module named *asdfa*",
+        "*ERROR collecting test_03_import_error.py*",
+        "*No module named *asdfa*",
+    ])
+
+
+def test_continue_on_collection_errors(testdir):
+    """
+    Verify tests are executed even when collection errors occur when the
+    --continue-on-collection-errors flag is set
+    """
+    testdir.makepyfile(**COLLECTION_ERROR_PY_FILES)
+
+    res = testdir.runpytest("--continue-on-collection-errors")
+    assert res.ret == 1
+
+    res.stdout.fnmatch_lines([
+        "collected 2 items / 2 errors",
+        "*1 failed, 1 passed, 2 error*",
+    ])
+
+
+def test_continue_on_collection_errors_maxfail(testdir):
+    """
+    Verify tests are executed even when collection errors occur and that maxfail
+    is honoured (including the collection error count).
+    4 tests: 2 collection errors + 1 failure + 1 success
+    test_4 is never executed because the test run is with --maxfail=3 which
+    means it is interrupted after the 2 collection errors + 1 failure.
+    """
+    testdir.makepyfile(**COLLECTION_ERROR_PY_FILES)
+
+    res = testdir.runpytest("--continue-on-collection-errors", "--maxfail=3")
+    assert res.ret == 2
+
+    res.stdout.fnmatch_lines([
+        "collected 2 items / 2 errors",
+        "*Interrupted: stopping after 3 failures*",
+        "*1 failed, 2 error*",
+    ])

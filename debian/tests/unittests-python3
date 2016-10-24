@@ -1,9 +1,0 @@
-#!/bin/sh
-
-cp -r testing "$ADTTMP"
-cd "$ADTTMP"
-
-for py in $(py3versions -s); do
-    TMPDIR="$ADTTMP" $py -m pytest testing
-done
-

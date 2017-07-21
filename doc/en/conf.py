@@ -17,10 +17,10 @@
 #
 # The full version, including alpha/beta/rc tags.
 # The short X.Y version.
-version = "2.5.2"
-release = "2.5.2"
 
-import sys, os
+import os, sys
+from _pytest import __version__ as version
+release = ".".join(version.split(".")[:2])
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -44,7 +44,7 @@ extensions = ['sphinx.ext.autodoc', 'sphinx.ext.todo', 'sphinx.ext.autosummary',
 templates_path = ['_templates']
 
 # The suffix of source filenames.
-source_suffix = '.txt'
+source_suffix = '.rst'
 
 # The encoding of source files.
 #source_encoding = 'utf-8-sig'
@@ -54,7 +54,7 @@ master_doc = 'contents'
 
 # General information about the project.
 project = u'pytest'
-copyright = u'2014, holger krekel'
+copyright = u'2015, holger krekel and pytest-dev team'
 
 
 
@@ -70,13 +70,13 @@ copyright = u'2014, holger krekel'
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
-exclude_patterns = ['links.inc', '_build', 'naming20.txt', 'test/*',
+exclude_patterns = ['links.inc', '_build', 'naming20.rst', 'test/*',
     "old_*",
     '*attic*',
     '*/attic*',
-    'funcargs.txt',
-    'setup.txt',
-    'example/remoteinterp.txt',
+    'funcargs.rst',
+    'setup.rst',
+    'example/remoteinterp.rst',
     ]
 
 
@@ -124,7 +124,7 @@ html_theme_options = {
 
 # The name for this set of Sphinx documents.  If None, it defaults to
 # "<project> v<release> documentation".
-html_title = None
+html_title = 'pytest documentation'
 
 # A shorter title for the navigation bar.  Default is the same as html_title.
 html_short_title = "pytest-%s" % release
@@ -141,7 +141,7 @@ html_favicon = "img/pytest1favi.ico"
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
+# html_static_path = ['_static']
 
 # If not '', a 'Last updated on:' timestamp is inserted at every page bottom,
 # using the given strftime format.
@@ -225,7 +225,7 @@ latex_documents = [
 
 # The name of an image file (relative to this directory) to place at the top of
 # the title page.
-#latex_logo = None
+latex_logo = 'img/pytest1.png'
 
 # For "manual" documents, if this is true, then toplevel headings are parts,
 # not chapters.

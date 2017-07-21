@@ -1,4 +1,4 @@
 [console_scripts]
+pytest = pytest:main
 py.test = pytest:main
-py.test-2.7 = pytest:main
 

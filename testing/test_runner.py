@@ -1,6 +1,11 @@
+# -*- coding: utf-8 -*-
 from __future__ import with_statement
 
-import pytest, py, sys, os
+import _pytest._code
+import os
+import py
+import pytest
+import sys
 from _pytest import runner, main
 
 class TestSetupState:
@@ -223,6 +228,40 @@ class BaseFunctionalTests:
         assert reps[5].nodeid.endswith("test_func")
         assert reps[5].failed
 
+    def test_exact_teardown_issue1206(self, testdir):
+        """issue shadowing error with wrong number of arguments on teardown_method."""
+        rec = testdir.inline_runsource("""
+            import pytest
+
+            class TestClass:
+                def teardown_method(self, x, y, z):
+                    pass
+
+                def test_method(self):
+                    assert True
+        """)
+        reps = rec.getreports("pytest_runtest_logreport")
+        print (reps)
+        assert len(reps) == 3
+        #
+        assert reps[0].nodeid.endswith("test_method")
+        assert reps[0].passed
+        assert reps[0].when == 'setup'
+        #
+        assert reps[1].nodeid.endswith("test_method")
+        assert reps[1].passed
+        assert reps[1].when == 'call'
+        #
+        assert reps[2].nodeid.endswith("test_method")
+        assert reps[2].failed
+        assert reps[2].when == "teardown"
+        assert reps[2].longrepr.reprcrash.message in (
+                # python3 error
+                "TypeError: teardown_method() missing 2 required positional arguments: 'y' and 'z'",
+                # python2 error
+                'TypeError: teardown_method() takes exactly 4 arguments (2 given)'
+                )
+
     def test_failure_in_setup_function_ignores_custom_repr(self, testdir):
         testdir.makepyfile(conftest="""
             import pytest
@@ -293,8 +332,8 @@ class TestExecutionForked(BaseFunctionalTests):
 
     def getrunner(self):
         # XXX re-arrange this test to live in pytest-xdist
-        xplugin = pytest.importorskip("xdist.plugin")
-        return xplugin.forked_run_report
+        boxed = pytest.importorskip("xdist.boxed")
+        return boxed.forked_run_report
 
     def test_suicide(self, testdir):
         reports = testdir.runitem("""
@@ -327,18 +366,6 @@ class TestSessionReports:
         assert res[0].name == "test_func1"
         assert res[1].name == "TestClass"
 
-    def test_skip_at_module_scope(self, testdir):
-        col = testdir.getmodulecol("""
-            import pytest
-            pytest.skip("hello")
-            def test_func():
-                pass
-        """)
-        rep = main.collect_one_node(col)
-        assert not rep.failed
-        assert not rep.passed
-        assert rep.skipped
-
 
 reporttypes = [
     runner.BaseReport,
@@ -349,7 +376,10 @@ reporttypes = [
 
 @pytest.mark.parametrize('reporttype', reporttypes, ids=[x.__name__ for x in reporttypes])
 def test_report_extra_parameters(reporttype):
-    args = py.std.inspect.getargspec(reporttype.__init__)[0][1:]
+    if hasattr(py.std.inspect, 'signature'):
+        args = list(py.std.inspect.signature(reporttype.__init__).parameters.keys())[1:]
+    else:
+        args = py.std.inspect.getargspec(reporttype.__init__)[0][1:]
     basekw = dict.fromkeys(args, [])
     report = reporttype(newthing=1, **basekw)
     assert report.newthing == 1
@@ -370,13 +400,15 @@ def test_callinfo():
 @pytest.mark.xfail
 def test_runtest_in_module_ordering(testdir):
     p1 = testdir.makepyfile("""
+        import pytest
         def pytest_runtest_setup(item): # runs after class-level!
             item.function.mylist.append("module")
         class TestClass:
             def pytest_runtest_setup(self, item):
                 assert not hasattr(item.function, 'mylist')
                 item.function.mylist = ['class']
-            def pytest_funcarg__mylist(self, request):
+            @pytest.fixture
+            def mylist(self, request):
                 return request.function.mylist
             def pytest_runtest_call(self, item, __multicall__):
                 try:
@@ -405,16 +437,28 @@ def test_pytest_exit():
     try:
         pytest.exit("hello")
     except pytest.exit.Exception:
-        excinfo = py.code.ExceptionInfo()
+        excinfo = _pytest._code.ExceptionInfo()
         assert excinfo.errisinstance(KeyboardInterrupt)
 
 def test_pytest_fail():
     try:
         pytest.fail("hello")
     except pytest.fail.Exception:
-        excinfo = py.code.ExceptionInfo()
+        excinfo = _pytest._code.ExceptionInfo()
         s = excinfo.exconly(tryshort=True)
         assert s.startswith("Failed")
+
+def test_pytest_exit_msg(testdir):
+    testdir.makeconftest("""
+    import pytest
+
+    def pytest_configure(config):
+        pytest.exit('oh noes')
+    """)
+    result = testdir.runpytest()
+    result.stderr.fnmatch_lines([
+        "Exit: oh noes",
+    ])
 
 def test_pytest_fail_notrace(testdir):
     testdir.makepyfile("""
@@ -431,15 +475,57 @@ def test_pytest_fail_notrace(testdir):
     ])
     assert 'def teardown_function' not in result.stdout.str()
 
+
+@pytest.mark.parametrize('str_prefix', ['u', ''])
+def test_pytest_fail_notrace_non_ascii(testdir, str_prefix):
+    """Fix pytest.fail with pytrace=False with non-ascii characters (#1178).
+
+    This tests with native and unicode strings containing non-ascii chars.
+    """
+    testdir.makepyfile(u"""
+        # coding: utf-8
+        import pytest
+
+        def test_hello():
+            pytest.fail(%s'oh oh: ☺', pytrace=False)
+    """ % str_prefix)
+    result = testdir.runpytest()
+    if sys.version_info[0] >= 3:
+        result.stdout.fnmatch_lines(['*test_hello*', "oh oh: ☺"])
+    else:
+        result.stdout.fnmatch_lines(['*test_hello*', "oh oh: *"])
+    assert 'def test_hello' not in result.stdout.str()
+
+
+def test_pytest_no_tests_collected_exit_status(testdir):
+    result = testdir.runpytest()
+    result.stdout.fnmatch_lines('*collected 0 items*')
+    assert result.ret == main.EXIT_NOTESTSCOLLECTED
+
+    testdir.makepyfile(test_foo="""
+        def test_foo():
+            assert 1
+    """)
+    result = testdir.runpytest()
+    result.stdout.fnmatch_lines('*collected 1 items*')
+    result.stdout.fnmatch_lines('*1 passed*')
+    assert result.ret == main.EXIT_OK
+
+    result = testdir.runpytest('-k nonmatch')
+    result.stdout.fnmatch_lines('*collected 1 items*')
+    result.stdout.fnmatch_lines('*1 deselected*')
+    assert result.ret == main.EXIT_NOTESTSCOLLECTED
+
+
 def test_exception_printing_skip():
     try:
         pytest.skip("hello")
     except pytest.skip.Exception:
-        excinfo = py.code.ExceptionInfo()
+        excinfo = _pytest._code.ExceptionInfo()
         s = excinfo.exconly(tryshort=True)
         assert s.startswith("Skipped")
 
-def test_importorskip():
+def test_importorskip(monkeypatch):
     importorskip = pytest.importorskip
     def f():
         importorskip("asdlkj")
@@ -457,19 +543,45 @@ def test_importorskip():
         pytest.raises(SyntaxError, "pytest.importorskip('x=y')")
         mod = py.std.types.ModuleType("hello123")
         mod.__version__ = "1.3"
-        sys.modules["hello123"] = mod
+        monkeypatch.setitem(sys.modules, "hello123", mod)
         pytest.raises(pytest.skip.Exception, """
             pytest.importorskip("hello123", minversion="1.3.1")
         """)
         mod2 = pytest.importorskip("hello123", minversion="1.3")
         assert mod2 == mod
     except pytest.skip.Exception:
-        print(py.code.ExceptionInfo())
+        print(_pytest._code.ExceptionInfo())
         pytest.fail("spurious skip")
 
 def test_importorskip_imports_last_module_part():
     ospath = pytest.importorskip("os.path")
     assert os.path == ospath
+
+def test_importorskip_dev_module(monkeypatch):
+    try:
+        mod = py.std.types.ModuleType("mockmodule")
+        mod.__version__ = '0.13.0.dev-43290'
+        monkeypatch.setitem(sys.modules, 'mockmodule', mod)
+        mod2 = pytest.importorskip('mockmodule', minversion='0.12.0')
+        assert mod2 == mod
+        pytest.raises(pytest.skip.Exception, """
+            pytest.importorskip('mockmodule1', minversion='0.14.0')""")
+    except pytest.skip.Exception:
+        print(_pytest._code.ExceptionInfo())
+        pytest.fail("spurious skip")
+
+
+def test_importorskip_module_level(testdir):
+    """importorskip must be able to skip entire modules when used at module level"""
+    testdir.makepyfile('''
+        import pytest
+        foobarbaz = pytest.importorskip("foobarbaz")
+
+        def test_foo():
+            pass
+    ''')
+    result = testdir.runpytest()
+    result.stdout.fnmatch_lines(['*collected 0 items / 1 skipped*'])
 
 
 def test_pytest_cmdline_main(testdir):
@@ -505,7 +617,6 @@ def test_unicode_in_longrepr(testdir):
     assert "UnicodeEncodeError" not in result.stderr.str()
 
 
-
 def test_failure_in_setup(testdir):
     testdir.makepyfile("""
         def setup_module():
@@ -515,3 +626,123 @@ def test_failure_in_setup(testdir):
     """)
     result = testdir.runpytest("--tb=line")
     assert "def setup_module" not in result.stdout.str()
+
+
+def test_makereport_getsource(testdir):
+    testdir.makepyfile("""
+        def test_foo():
+            if False: pass
+            else: assert False
+    """)
+    result = testdir.runpytest()
+    assert 'INTERNALERROR' not in result.stdout.str()
+    result.stdout.fnmatch_lines(['*else: assert False*'])
+
+
+def test_makereport_getsource_dynamic_code(testdir, monkeypatch):
+    """Test that exception in dynamically generated code doesn't break getting the source line."""
+    import inspect
+    original_findsource = inspect.findsource
+    def findsource(obj, *args, **kwargs):
+        # Can be triggered by dynamically created functions
+        if obj.__name__ == 'foo':
+            raise IndexError()
+        return original_findsource(obj, *args, **kwargs)
+    monkeypatch.setattr(inspect, 'findsource', findsource)
+
+    testdir.makepyfile("""
+        import pytest
+
+        @pytest.fixture
+        def foo(missing):
+            pass
+
+        def test_fix(foo):
+            assert False
+    """)
+    result = testdir.runpytest('-vv')
+    assert 'INTERNALERROR' not in result.stdout.str()
+    result.stdout.fnmatch_lines(["*test_fix*", "*fixture*'missing'*not found*"])
+
+
+def test_store_except_info_on_eror():
+    """ Test that upon test failure, the exception info is stored on
+    sys.last_traceback and friends.
+    """
+    # Simulate item that raises a specific exception
+    class ItemThatRaises:
+        def runtest(self):
+            raise IndexError('TEST')
+    try:
+        runner.pytest_runtest_call(ItemThatRaises())
+    except IndexError:
+        pass
+    # Check that exception info is stored on sys
+    assert sys.last_type is IndexError
+    assert sys.last_value.args[0] == 'TEST'
+    assert sys.last_traceback
+
+
+class TestReportContents:
+    """
+    Test user-level API of ``TestReport`` objects.
+    """
+
+    def getrunner(self):
+        return lambda item: runner.runtestprotocol(item, log=False)
+
+    def test_longreprtext_pass(self, testdir):
+        reports = testdir.runitem("""
+            def test_func():
+                pass
+        """)
+        rep = reports[1]
+        assert rep.longreprtext == ''
+
+    def test_longreprtext_failure(self, testdir):
+        reports = testdir.runitem("""
+            def test_func():
+                x = 1
+                assert x == 4
+        """)
+        rep = reports[1]
+        assert 'assert 1 == 4' in rep.longreprtext
+
+    def test_captured_text(self, testdir):
+        reports = testdir.runitem("""
+            import pytest
+            import sys
+
+            @pytest.fixture
+            def fix():
+                sys.stdout.write('setup: stdout\\n')
+                sys.stderr.write('setup: stderr\\n')
+                yield
+                sys.stdout.write('teardown: stdout\\n')
+                sys.stderr.write('teardown: stderr\\n')
+                assert 0
+
+            def test_func(fix):
+                sys.stdout.write('call: stdout\\n')
+                sys.stderr.write('call: stderr\\n')
+                assert 0
+        """)
+        setup, call, teardown = reports
+        assert setup.capstdout == 'setup: stdout\n'
+        assert call.capstdout == 'setup: stdout\ncall: stdout\n'
+        assert teardown.capstdout == 'setup: stdout\ncall: stdout\nteardown: stdout\n'
+
+        assert setup.capstderr == 'setup: stderr\n'
+        assert call.capstderr == 'setup: stderr\ncall: stderr\n'
+        assert teardown.capstderr == 'setup: stderr\ncall: stderr\nteardown: stderr\n'
+
+    def test_no_captured_text(self, testdir):
+        reports = testdir.runitem("""
+            def test_func():
+                pass
+        """)
+        rep = reports[1]
+        assert rep.capstdout == ''
+        assert rep.capstderr == ''
+
+

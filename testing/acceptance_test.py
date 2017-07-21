@@ -1,4 +1,12 @@
-import py, pytest
+# -*- coding: utf-8 -*-
+import os
+import sys
+
+import _pytest._code
+import py
+import pytest
+from _pytest.main import EXIT_NOTESTSCOLLECTED, EXIT_USAGEERROR
+
 
 class TestGeneralUsage:
     def test_config_error(self, testdir):
@@ -82,7 +90,7 @@ class TestGeneralUsage:
             def test_option(pytestconfig):
                 assert pytestconfig.option.xyz == "123"
         """)
-        result = testdir.runpytest("-p", "pytest_xyz", "--xyz=123")
+        result = testdir.runpytest("-p", "pytest_xyz", "--xyz=123", syspathinsert=True)
         assert result.ret == 0
         result.stdout.fnmatch_lines([
             '*1 passed*',
@@ -111,9 +119,10 @@ class TestGeneralUsage:
         result = testdir.runpytest(p)
         result.stdout.fnmatch_lines([
             #XXX on jython this fails:  ">   import import_fails",
-            "E   ImportError: No module named *does_not_work*",
+            "ImportError while importing test module*",
+            "'No module named *does_not_work*",
         ])
-        assert result.ret == 1
+        assert result.ret == 2
 
     def test_not_collectable_arguments(self, testdir):
         p1 = testdir.makepyfile("")
@@ -146,7 +155,7 @@ class TestGeneralUsage:
                 pytest.skip("early")
         """)
         result = testdir.runpytest()
-        assert result.ret == 0
+        assert result.ret == EXIT_NOTESTSCOLLECTED
         result.stdout.fnmatch_lines([
             "*1 skip*"
         ])
@@ -176,7 +185,7 @@ class TestGeneralUsage:
             sys.stderr.write("stder42\\n")
         """)
         result = testdir.runpytest()
-        assert result.ret == 0
+        assert result.ret == EXIT_NOTESTSCOLLECTED
         assert "should not be seen" not in result.stdout.str()
         assert "stderr42" not in result.stderr.str()
 
@@ -194,7 +203,7 @@ class TestGeneralUsage:
     def test_chdir(self, testdir):
         testdir.tmpdir.join("py").mksymlinkto(py._pydir)
         p = testdir.tmpdir.join("main.py")
-        p.write(py.code.Source("""
+        p.write(_pytest._code.Source("""
             import sys, os
             sys.path.insert(0, '')
             import py
@@ -203,7 +212,7 @@ class TestGeneralUsage:
             os.chdir(os.path.dirname(os.getcwd()))
             print (py.log)
         """))
-        result = testdir.runpython(p, prepend=False)
+        result = testdir.runpython(p)
         assert not result.ret
 
     def test_issue109_sibling_conftests_not_loaded(self, testdir):
@@ -211,13 +220,13 @@ class TestGeneralUsage:
         sub2 = testdir.tmpdir.mkdir("sub2")
         sub1.join("conftest.py").write("assert 0")
         result = testdir.runpytest(sub2)
-        assert result.ret == 0
+        assert result.ret == EXIT_NOTESTSCOLLECTED
         sub2.ensure("__init__.py")
         p = sub2.ensure("test_hello.py")
         result = testdir.runpytest(p)
-        assert result.ret == 0
+        assert result.ret == EXIT_NOTESTSCOLLECTED
         result = testdir.runpytest(sub1)
-        assert result.ret != 0
+        assert result.ret == EXIT_USAGEERROR
 
     def test_directory_skipped(self, testdir):
         testdir.makeconftest("""
@@ -227,7 +236,7 @@ class TestGeneralUsage:
         """)
         testdir.makepyfile("def test_hello(): pass")
         result = testdir.runpytest()
-        assert result.ret == 0
+        assert result.ret == EXIT_NOTESTSCOLLECTED
         result.stdout.fnmatch_lines([
             "*1 skipped*"
         ])
@@ -353,6 +362,53 @@ class TestGeneralUsage:
             *unrecognized*
         """)
 
+    def test_getsourcelines_error_issue553(self, testdir, monkeypatch):
+        monkeypatch.setattr("inspect.getsourcelines", None)
+        p = testdir.makepyfile("""
+            def raise_error(obj):
+                raise IOError('source code not available')
+
+            import inspect
+            inspect.getsourcelines = raise_error
+
+            def test_foo(invalid_fixture):
+                pass
+        """)
+        res = testdir.runpytest(p)
+        res.stdout.fnmatch_lines([
+            "*source code not available*",
+            "E*fixture 'invalid_fixture' not found",
+        ])
+
+    def test_plugins_given_as_strings(self, tmpdir, monkeypatch):
+        """test that str values passed to main() as `plugins` arg
+        are interpreted as module names to be imported and registered.
+        #855.
+        """
+        with pytest.raises(ImportError) as excinfo:
+            pytest.main([str(tmpdir)], plugins=['invalid.module'])
+        assert 'invalid' in str(excinfo.value)
+
+        p = tmpdir.join('test_test_plugins_given_as_strings.py')
+        p.write('def test_foo(): pass')
+        mod = py.std.types.ModuleType("myplugin")
+        monkeypatch.setitem(sys.modules, 'myplugin', mod)
+        assert pytest.main(args=[str(tmpdir)], plugins=['myplugin']) == 0
+
+    def test_parameterized_with_bytes_regex(self, testdir):
+        p = testdir.makepyfile("""
+            import re
+            import pytest
+            @pytest.mark.parametrize('r', [re.compile(b'foo')])
+            def test_stuff(r):
+                pass
+        """
+        )
+        res = testdir.runpytest(p)
+        res.stdout.fnmatch_lines([
+            '*1 passed*'
+        ])
+
 
 class TestInvocationVariants:
     def test_earlyinit(self, testdir):
@@ -414,19 +470,16 @@ class TestInvocationVariants:
             "*1 passed*",
         ])
 
-    @pytest.mark.skipif("sys.version_info < (2,5)")
     def test_python_minus_m_invocation_ok(self, testdir):
         p1 = testdir.makepyfile("def test_hello(): pass")
         res = testdir.run(py.std.sys.executable, "-m", "pytest", str(p1))
         assert res.ret == 0
 
-    @pytest.mark.skipif("sys.version_info < (2,5)")
     def test_python_minus_m_invocation_fail(self, testdir):
         p1 = testdir.makepyfile("def test_fail(): 0/0")
         res = testdir.run(py.std.sys.executable, "-m", "pytest", str(p1))
         assert res.ret == 1
 
-    @pytest.mark.skipif("sys.version_info < (2,5)")
     def test_python_pytest_package(self, testdir):
         p1 = testdir.makepyfile("def test_pass(): pass")
         res = testdir.run(py.std.sys.executable, "-m", "pytest", str(p1))
@@ -445,7 +498,7 @@ class TestInvocationVariants:
 
     def test_invoke_with_path(self, tmpdir, capsys):
         retcode = pytest.main(tmpdir)
-        assert not retcode
+        assert retcode == EXIT_NOTESTSCOLLECTED
         out, err = capsys.readouterr()
 
     def test_invoke_plugin_api(self, testdir, capsys):
@@ -462,12 +515,11 @@ class TestInvocationVariants:
         path = testdir.mkpydir("tpkg")
         path.join("test_hello.py").write('raise ImportError')
 
-        result = testdir.runpytest("--pyargs", "tpkg.test_hello")
+        result = testdir.runpytest_subprocess("--pyargs", "tpkg.test_hello")
         assert result.ret != 0
-        # FIXME: It would be more natural to match NOT
-        # "ERROR*file*or*package*not*found*".
+
         result.stdout.fnmatch_lines([
-            "*collected 0 items*"
+            "collected*0*items*/*1*errors"
         ])
 
     def test_cmdline_python_package(self, testdir, monkeypatch):
@@ -489,7 +541,7 @@ class TestInvocationVariants:
         def join_pythonpath(what):
             cur = py.std.os.environ.get('PYTHONPATH')
             if cur:
-                return str(what) + ':' + cur
+                return str(what) + os.pathsep + cur
             return what
         empty_package = testdir.mkpydir("empty_package")
         monkeypatch.setenv('PYTHONPATH', join_pythonpath(empty_package))
@@ -500,11 +552,72 @@ class TestInvocationVariants:
         ])
 
         monkeypatch.setenv('PYTHONPATH', join_pythonpath(testdir))
-        path.join('test_hello.py').remove()
-        result = testdir.runpytest("--pyargs", "tpkg.test_hello")
+        result = testdir.runpytest("--pyargs", "tpkg.test_missing")
         assert result.ret != 0
         result.stderr.fnmatch_lines([
-            "*not*found*test_hello*",
+            "*not*found*test_missing*",
+        ])
+
+    def test_cmdline_python_namespace_package(self, testdir, monkeypatch):
+        """
+        test --pyargs option with namespace packages (#1567)
+        """
+        monkeypatch.delenv('PYTHONDONTWRITEBYTECODE', raising=False)
+
+        search_path = []
+        for dirname in "hello", "world":
+            d = testdir.mkdir(dirname)
+            search_path.append(d)
+            ns = d.mkdir("ns_pkg")
+            ns.join("__init__.py").write(
+                "__import__('pkg_resources').declare_namespace(__name__)")
+            lib = ns.mkdir(dirname)
+            lib.ensure("__init__.py")
+            lib.join("test_{0}.py".format(dirname)). \
+                write("def test_{0}(): pass\n"
+                      "def test_other():pass".format(dirname))
+
+        # The structure of the test directory is now:
+        # .
+        # ├── hello
+        # │   └── ns_pkg
+        # │       ├── __init__.py
+        # │       └── hello
+        # │           ├── __init__.py
+        # │           └── test_hello.py
+        # └── world
+        #     └── ns_pkg
+        #         ├── __init__.py
+        #         └── world
+        #             ├── __init__.py
+        #             └── test_world.py
+
+        def join_pythonpath(*dirs):
+            cur = py.std.os.environ.get('PYTHONPATH')
+            if cur:
+                dirs += (cur,)
+            return os.pathsep.join(str(p) for p in dirs)
+        monkeypatch.setenv('PYTHONPATH', join_pythonpath(*search_path))
+        for p in search_path:
+            monkeypatch.syspath_prepend(p)
+
+        # mixed module and filenames:
+        result = testdir.runpytest("--pyargs", "-v", "ns_pkg.hello", "world/ns_pkg")
+        assert result.ret == 0
+        result.stdout.fnmatch_lines([
+            "*test_hello.py::test_hello*PASSED",
+            "*test_hello.py::test_other*PASSED",
+            "*test_world.py::test_world*PASSED",
+            "*test_world.py::test_other*PASSED",
+            "*4 passed*"
+        ])
+
+        # specify tests within a module
+        result = testdir.runpytest("--pyargs", "-v", "ns_pkg.world.test_world::test_other")
+        assert result.ret == 0
+        result.stdout.fnmatch_lines([
+            "*test_world.py::test_other*PASSED",
+            "*1 passed*"
         ])
 
     def test_cmdline_python_package_not_exists(self, testdir):
@@ -545,6 +658,17 @@ class TestInvocationVariants:
             line,
             "*1 failed*",
         ])
+
+    def test_core_backward_compatibility(self):
+        """Test backward compatibility for get_plugin_manager function. See #787."""
+        import _pytest.config
+        assert type(_pytest.config.get_plugin_manager()) is _pytest.config.PytestPluginManager
+
+
+    def test_has_plugin(self, request):
+        """Test hasplugin function of the plugin manager (#932)."""
+        assert request.config.pluginmanager.hasplugin('python')
+
 
 class TestDurations:
     source = """
@@ -603,11 +727,18 @@ class TestDurations:
         testdir.makepyfile(self.source)
         testdir.makepyfile(test_collecterror="""xyz""")
         result = testdir.runpytest("--durations=2", "-k test_1")
-        assert result.ret != 0
+        assert result.ret == 2
         result.stdout.fnmatch_lines([
-            "*durations*",
-            "*call*test_1*",
+            "*Interrupted: 1 errors during collection*",
         ])
+        # Collection errors abort test execution, therefore no duration is
+        # output
+        assert "duration" not in result.stdout.str()
+
+    def test_with_not(self, testdir):
+        testdir.makepyfile(self.source)
+        result = testdir.runpytest("-k not 1")
+        assert result.ret == 0
 
 
 class TestDurationWithFixture:
@@ -632,3 +763,21 @@ class TestDurationWithFixture:
             * call *test_1*
         """)
 
+
+def test_zipimport_hook(testdir, tmpdir):
+    """Test package loader is being used correctly (see #1837)."""
+    zipapp = pytest.importorskip('zipapp')
+    testdir.tmpdir.join('app').ensure(dir=1)
+    testdir.makepyfile(**{
+        'app/foo.py': """
+            import pytest
+            def main():
+                pytest.main(['--pyarg', 'foo'])
+        """,
+    })
+    target = tmpdir.join('foo.zip')
+    zipapp.create_archive(str(testdir.tmpdir.join('app')), str(target), main='foo:main')
+    result = testdir.runpython(target)
+    assert result.ret == 0
+    result.stderr.fnmatch_lines(['*not found*foo*'])
+    assert 'INTERNALERROR>' not in result.stdout.str()

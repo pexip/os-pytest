@@ -1,10 +1,12 @@
 """ basic collect and runtest protocol implementations """
+import bdb
+import sys
+from time import time
 
 import py
 import pytest
-import sys
-from time import time
-from py._code.code import TerminalRepr
+from _pytest._code.code import TerminalRepr, ExceptionInfo
+
 
 def pytest_namespace():
     return {
@@ -71,7 +73,10 @@ def runtestprotocol(item, log=True, nextitem=None):
     rep = call_and_report(item, "setup", log)
     reports = [rep]
     if rep.passed:
-        reports.append(call_and_report(item, "call", log))
+        if item.config.option.setupshow:
+            show_test_item(item)
+        if not item.config.option.setuponly:
+            reports.append(call_and_report(item, "call", log))
     reports.append(call_and_report(item, "teardown", log,
         nextitem=nextitem))
     # after all teardown hooks have been called
@@ -81,11 +86,31 @@ def runtestprotocol(item, log=True, nextitem=None):
         item.funcargs = None
     return reports
 
+def show_test_item(item):
+    """Show test function, parameters and the fixtures of the test item."""
+    tw = item.config.get_terminal_writer()
+    tw.line()
+    tw.write(' ' * 8)
+    tw.write(item._nodeid)
+    used_fixtures = sorted(item._fixtureinfo.name2fixturedefs.keys())
+    if used_fixtures:
+        tw.write(' (fixtures used: {0})'.format(', '.join(used_fixtures)))
+
 def pytest_runtest_setup(item):
     item.session._setupstate.prepare(item)
 
 def pytest_runtest_call(item):
-    item.runtest()
+    try:
+        item.runtest()
+    except Exception:
+        # Store trace info to allow postmortem debugging
+        type, value, tb = sys.exc_info()
+        tb = tb.tb_next  # Skip *this* frame
+        sys.last_type = type
+        sys.last_value = value
+        sys.last_traceback = tb
+        del tb  # Get rid of it in this namespace
+        raise
 
 def pytest_runtest_teardown(item, nextitem):
     item.session._setupstate.teardown_exact(item, nextitem)
@@ -118,7 +143,7 @@ def check_interactive_exception(call, report):
     return call.excinfo and not (
                 hasattr(report, "wasxfail") or
                 call.excinfo.errisinstance(skip.Exception) or
-                call.excinfo.errisinstance(py.std.bdb.BdbQuit))
+                call.excinfo.errisinstance(bdb.BdbQuit))
 
 def call_runtest_hook(item, when, **kwds):
     hookname = "pytest_runtest_" + when
@@ -140,7 +165,7 @@ class CallInfo:
             self.stop = time()
             raise
         except:
-            self.excinfo = py.code.ExceptionInfo()
+            self.excinfo = ExceptionInfo()
         self.stop = time()
 
     def __repr__(self):
@@ -166,9 +191,13 @@ class BaseReport(object):
         self.__dict__.update(kw)
 
     def toterminal(self, out):
-        longrepr = self.longrepr
         if hasattr(self, 'node'):
             out.line(getslaveinfoline(self.node))
+
+        longrepr = self.longrepr
+        if longrepr is None:
+            return
+
         if hasattr(longrepr, 'toterminal'):
             longrepr.toterminal(out)
         else:
@@ -181,6 +210,36 @@ class BaseReport(object):
         for name, content in self.sections:
             if name.startswith(prefix):
                 yield prefix, content
+
+    @property
+    def longreprtext(self):
+        """
+        Read-only property that returns the full string representation
+        of ``longrepr``.
+
+        .. versionadded:: 3.0
+        """
+        tw = py.io.TerminalWriter(stringio=True)
+        tw.hasmarkup = False
+        self.toterminal(tw)
+        exc = tw.stringio.getvalue()
+        return exc.strip()
+
+    @property
+    def capstdout(self):
+        """Return captured text from stdout, if capturing is enabled
+
+        .. versionadded:: 3.0
+        """
+        return ''.join(content for (prefix, content) in self.get_sections('Captured stdout'))
+
+    @property
+    def capstderr(self):
+        """Return captured text from stderr, if capturing is enabled
+
+        .. versionadded:: 3.0
+        """
+        return ''.join(content for (prefix, content) in self.get_sections('Captured stderr'))
 
     passed = property(lambda x: x.outcome == "passed")
     failed = property(lambda x: x.outcome == "failed")
@@ -200,7 +259,7 @@ def pytest_runtest_makereport(item, call):
         outcome = "passed"
         longrepr = None
     else:
-        if not isinstance(excinfo, py.code.ExceptionInfo):
+        if not isinstance(excinfo, ExceptionInfo):
             outcome = "failed"
             longrepr = excinfo
         elif excinfo.errisinstance(pytest.skip.Exception):
@@ -215,7 +274,7 @@ def pytest_runtest_makereport(item, call):
                 longrepr = item._repr_failure_py(excinfo,
                                             style=item.config.option.tbstyle)
     for rwhen, key, content in item._report_sections:
-        sections.append(("Captured std%s %s" %(key, rwhen), content))
+        sections.append(("Captured %s %s" %(key, rwhen), content))
     return TestReport(item.nodeid, item.location,
                       keywords, outcome, longrepr, when,
                       sections, duration)
@@ -247,8 +306,10 @@ class TestReport(BaseReport):
         #: one of 'setup', 'call', 'teardown' to indicate runtest phase.
         self.when = when
 
-        #: list of (secname, data) extra information which needs to
-        #: marshallable
+        #: list of pairs ``(str, str)`` of extra information which needs to
+        #: marshallable. Used by pytest to add captured text
+        #: from ``stdout`` and ``stderr``, but may be used by other plugins
+        #: to add arbitrary information to reports.
         self.sections = list(sections)
 
         #: time it took to run just the test
@@ -419,7 +480,10 @@ class OutcomeException(Exception):
 
     def __repr__(self):
         if self.msg:
-            return str(self.msg)
+            val = self.msg
+            if isinstance(val, bytes):
+                val = py._builtin._totext(val, errors='replace')
+            return val
         return "<%s instance>" %(self.__class__.__name__,)
     __str__ = __repr__
 
@@ -428,9 +492,15 @@ class Skipped(OutcomeException):
     # in order to have Skipped exception printing shorter/nicer
     __module__ = 'builtins'
 
+    def __init__(self, msg=None, pytrace=True, allow_module_level=False):
+        OutcomeException.__init__(self, msg=msg, pytrace=pytrace)
+        self.allow_module_level = allow_module_level
+
+
 class Failed(OutcomeException):
     """ raised from an explicit call to pytest.fail() """
     __module__ = 'builtins'
+
 
 class Exit(KeyboardInterrupt):
     """ raised for immediate program exits (no tracebacks/summaries)"""
@@ -458,7 +528,7 @@ def skip(msg=""):
 skip.Exception = Skipped
 
 def fail(msg="", pytrace=True):
-    """ explicitely fail an currently-executing test with the given Message.
+    """ explicitly fail an currently-executing test with the given Message.
 
     :arg pytrace: if false the msg represents the full failure information
                   and no python traceback will be reported.
@@ -472,22 +542,30 @@ def importorskip(modname, minversion=None):
     """ return imported module if it has at least "minversion" as its
     __version__ attribute.  If no minversion is specified the a skip
     is only triggered if the module can not be imported.
-    Note that version comparison only works with simple version strings
-    like "1.2.3" but not "1.2.3.dev1" or others.
     """
     __tracebackhide__ = True
     compile(modname, '', 'eval') # to catch syntaxerrors
+    should_skip = False
     try:
         __import__(modname)
     except ImportError:
-        skip("could not import %r" %(modname,))
+        # Do not raise chained exception here(#1485)
+        should_skip = True
+    if should_skip:
+        raise Skipped("could not import %r" %(modname,), allow_module_level=True)
     mod = sys.modules[modname]
     if minversion is None:
         return mod
     verattr = getattr(mod, '__version__', None)
-    def intver(verstring):
-        return [int(x) for x in verstring.split(".")]
-    if verattr is None or intver(verattr) < intver(minversion):
-        skip("module %r has __version__ %r, required is: %r" %(
-             modname, verattr, minversion))
+    if minversion is not None:
+        try:
+            from pkg_resources import parse_version as pv
+        except ImportError:
+            raise Skipped("we have a required version for %r but can not import "
+                          "pkg_resources to parse version strings." % (modname,),
+                          allow_module_level=True)
+        if verattr is None or pv(verattr) < pv(minversion):
+            raise Skipped("module %r has __version__ %r, required is: %r" %(
+                          modname, verattr, minversion), allow_module_level=True)
     return mod
+

@@ -1,6 +1,7 @@
 import pytest
-from _pytest import runner
 from _pytest import python
+from _pytest import runner
+
 
 class TestOEJSKITSpecials:
     def test_funcarg_non_pycollectobj(self, testdir): # rough jstests usage
@@ -14,7 +15,9 @@ class TestOEJSKITSpecials:
                     return self.fspath, 3, "xyz"
         """)
         modcol = testdir.getmodulecol("""
-            def pytest_funcarg__arg1(request):
+            import pytest
+            @pytest.fixture
+            def arg1(request):
                 return 42
             class MyClass:
                 pass
@@ -42,7 +45,8 @@ class TestOEJSKITSpecials:
             @pytest.fixture(autouse=True)
             def hello():
                 pass
-            def pytest_funcarg__arg1(request):
+            @pytest.fixture
+            def arg1(request):
                 return 42
             class MyClass:
                 pass
@@ -72,7 +76,7 @@ def test_wrapped_getfslineno():
 
 class TestMockDecoration:
     def test_wrapped_getfuncargnames(self):
-        from _pytest.python import getfuncargnames
+        from _pytest.compat import getfuncargnames
         def wrap(f):
             def func():
                 pass
@@ -85,7 +89,7 @@ class TestMockDecoration:
         assert l == ("x",)
 
     def test_wrapped_getfuncargnames_patching(self):
-        from _pytest.python import getfuncargnames
+        from _pytest.compat import getfuncargnames
         def wrap(f):
             def func():
                 pass
@@ -108,6 +112,26 @@ class TestMockDecoration:
                     import os
                     os.path.abspath("hello")
                     abspath.assert_any_call("hello")
+        """)
+        reprec = testdir.inline_run()
+        reprec.assertoutcome(passed=1)
+
+    def test_unittest_mock_and_fixture(self, testdir):
+        pytest.importorskip("unittest.mock")
+        testdir.makepyfile("""
+            import os.path
+            import unittest.mock
+            import pytest
+
+            @pytest.fixture
+            def inject_me():
+                pass
+
+            @unittest.mock.patch.object(os.path, "abspath",
+                                        new=unittest.mock.MagicMock)
+            def test_hello(inject_me):
+                import os
+                os.path.abspath("hello")
         """)
         reprec = testdir.inline_run()
         reprec.assertoutcome(passed=1)
@@ -213,12 +237,12 @@ class TestReRunTests:
         """)
 
 def test_pytestconfig_is_session_scoped():
-    from _pytest.python import pytestconfig
+    from _pytest.fixtures import pytestconfig
     assert pytestconfig._pytestfixturefunction.scope == "session"
 
 
 class TestNoselikeTestAttribute:
-    def test_module(self, testdir):
+    def test_module_with_global_test(self, testdir):
         testdir.makepyfile("""
             __test__ = False
             def test_hello():
@@ -228,7 +252,7 @@ class TestNoselikeTestAttribute:
         assert not reprec.getfailedcollections()
         calls = reprec.getreports("pytest_runtest_logreport")
         assert not calls
-        
+
     def test_class_and_method(self, testdir):
         testdir.makepyfile("""
             __test__ = True
@@ -262,5 +286,87 @@ class TestNoselikeTestAttribute:
         call = reprec.getcalls("pytest_collection_modifyitems")[0]
         assert len(call.items) == 1
         assert call.items[0].cls.__name__ == "TC"
-        
 
+    def test_class_with_nasty_getattr(self, testdir):
+        """Make sure we handle classes with a custom nasty __getattr__ right.
+
+        With a custom __getattr__ which e.g. returns a function (like with a
+        RPC wrapper), we shouldn't assume this meant "__test__ = True".
+        """
+        # https://github.com/pytest-dev/pytest/issues/1204
+        testdir.makepyfile("""
+            class MetaModel(type):
+
+                def __getattr__(cls, key):
+                    return lambda: None
+
+
+            BaseModel = MetaModel('Model', (), {})
+
+
+            class Model(BaseModel):
+
+                __metaclass__ = MetaModel
+
+                def test_blah(self):
+                    pass
+        """)
+        reprec = testdir.inline_run()
+        assert not reprec.getfailedcollections()
+        call = reprec.getcalls("pytest_collection_modifyitems")[0]
+        assert not call.items
+
+
+@pytest.mark.issue351
+class TestParameterize:
+
+    def test_idfn_marker(self, testdir):
+        testdir.makepyfile("""
+            import pytest
+
+            def idfn(param):
+                if param == 0:
+                    return 'spam'
+                elif param == 1:
+                    return 'ham'
+                else:
+                    return None
+
+            @pytest.mark.parametrize('a,b', [(0, 2), (1, 2)], ids=idfn)
+            def test_params(a, b):
+                pass
+        """)
+        res = testdir.runpytest('--collect-only')
+        res.stdout.fnmatch_lines([
+            "*spam-2*",
+            "*ham-2*",
+        ])
+
+    def test_idfn_fixture(self, testdir):
+        testdir.makepyfile("""
+            import pytest
+
+            def idfn(param):
+                if param == 0:
+                    return 'spam'
+                elif param == 1:
+                    return 'ham'
+                else:
+                    return None
+
+            @pytest.fixture(params=[0, 1], ids=idfn)
+            def a(request):
+                return request.param
+
+            @pytest.fixture(params=[1, 2], ids=idfn)
+            def b(request):
+                return request.param
+
+            def test_params(a, b):
+                pass
+        """)
+        res = testdir.runpytest('--collect-only')
+        res.stdout.fnmatch_lines([
+            "*spam-2*",
+            "*ham-2*",
+        ])

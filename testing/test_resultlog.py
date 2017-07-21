@@ -1,8 +1,12 @@
-import py, pytest
 import os
+
+import _pytest._code
+import py
+import pytest
+from _pytest.main import Node, Item, FSCollector
 from _pytest.resultlog import generic_path, ResultLog, \
         pytest_configure, pytest_unconfigure
-from _pytest.main import Node, Item, FSCollector
+
 
 def test_generic_path(testdir):
     from _pytest.main import Session
@@ -79,18 +83,9 @@ class TestWithFunctionIntegration:
 
     def test_collection_report(self, testdir):
         ok = testdir.makepyfile(test_collection_ok="")
-        skip = testdir.makepyfile(test_collection_skip=
-            "import pytest ; pytest.skip('hello')")
         fail = testdir.makepyfile(test_collection_fail="XXX")
         lines = self.getresultlog(testdir, ok)
         assert not lines
-
-        lines = self.getresultlog(testdir, skip)
-        assert len(lines) == 2
-        assert lines[0].startswith("S ")
-        assert lines[0].endswith("test_collection_skip.py")
-        assert lines[1].startswith(" ")
-        assert lines[1].endswith("test_collection_skip.py:1: Skipped: hello")
 
         lines = self.getresultlog(testdir, fail)
         assert lines
@@ -140,7 +135,7 @@ class TestWithFunctionIntegration:
         try:
             raise ValueError
         except ValueError:
-            excinfo = py.code.ExceptionInfo()
+            excinfo = _pytest._code.ExceptionInfo()
         reslog = ResultLog(None, py.io.TextIO())
         reslog.pytest_internalerror(excinfo.getrepr(style=style))
         entry = reslog.logfile.getvalue()
@@ -180,6 +175,21 @@ def test_generic(testdir, LineMatcher):
         "x *:test_xfail_norun",
     ])
 
+def test_makedir_for_resultlog(testdir, LineMatcher):
+    """--resultlog should automatically create directories for the log file"""
+    testdir.plugins.append("resultlog")
+    testdir.makepyfile("""
+        import pytest
+        def test_pass():
+            pass
+    """)
+    testdir.runpytest("--resultlog=path/to/result.log")
+    lines = testdir.tmpdir.join("path/to/result.log").readlines(cr=0)
+    LineMatcher(lines).fnmatch_lines([
+        ". *:test_pass",
+    ])
+
+
 def test_no_resultlog_on_slaves(testdir):
     config = testdir.parseconfig("-p", "resultlog", "--resultlog=resultlog")
 
@@ -212,6 +222,6 @@ def test_failure_issue380(testdir):
             pass
     """)
     result = testdir.runpytest("--resultlog=log")
-    assert result.ret == 1
+    assert result.ret == 2
 
 

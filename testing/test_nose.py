@@ -19,9 +19,7 @@ def test_nose_setup(testdir):
         test_hello.teardown = lambda: l.append(2)
     """)
     result = testdir.runpytest(p, '-p', 'nose')
-    result.stdout.fnmatch_lines([
-        "*2 passed*"
-    ])
+    result.assert_outcomes(passed=2)
 
 
 def test_setup_func_with_setup_decorator():
@@ -66,9 +64,7 @@ def test_nose_setup_func(testdir):
 
     """)
     result = testdir.runpytest(p, '-p', 'nose')
-    result.stdout.fnmatch_lines([
-        "*2 passed*"
-    ])
+    result.assert_outcomes(passed=2)
 
 
 def test_nose_setup_func_failure(testdir):
@@ -302,9 +298,8 @@ def test_apiwrapper_problem_issue260(testdir):
                 pass
         """)
     result = testdir.runpytest()
-    result.stdout.fnmatch_lines("*1 passed*")
+    result.assert_outcomes(passed=1)
 
-@pytest.mark.skipif("sys.version_info < (2,6)")
 def test_setup_teardown_linking_issue265(testdir):
     # we accidentally didnt integrate nose setupstate with normal setupstate
     # this test ensures that won't happen again
@@ -327,8 +322,8 @@ def test_setup_teardown_linking_issue265(testdir):
                 """Undoes the setup."""
                 raise Exception("should not call teardown for skipped tests")
         ''')
-    reprec = testdir.inline_run()
-    reprec.assertoutcome(passed=1, skipped=1)
+    reprec = testdir.runpytest()
+    reprec.assert_outcomes(passed=1, skipped=1)
 
 
 def test_SkipTest_during_collection(testdir):
@@ -339,9 +334,7 @@ def test_SkipTest_during_collection(testdir):
             assert False
         """)
     result = testdir.runpytest(p)
-    outcome = result.parseoutcomes()
-    outcome.pop('seconds')
-    assert outcome == dict(skipped=1)
+    result.assert_outcomes(skipped=1)
 
 
 def test_SkipTest_in_test(testdir):
@@ -353,3 +346,49 @@ def test_SkipTest_in_test(testdir):
         """)
     reprec = testdir.inline_run()
     reprec.assertoutcome(skipped=1)
+
+def test_istest_function_decorator(testdir):
+    p = testdir.makepyfile("""
+        import nose.tools
+        @nose.tools.istest
+        def not_test_prefix():
+            pass
+        """)
+    result = testdir.runpytest(p)
+    result.assert_outcomes(passed=1)
+
+def test_nottest_function_decorator(testdir):
+    testdir.makepyfile("""
+        import nose.tools
+        @nose.tools.nottest
+        def test_prefix():
+            pass
+        """)
+    reprec = testdir.inline_run()
+    assert not reprec.getfailedcollections()
+    calls = reprec.getreports("pytest_runtest_logreport")
+    assert not calls
+
+def test_istest_class_decorator(testdir):
+    p = testdir.makepyfile("""
+        import nose.tools
+        @nose.tools.istest
+        class NotTestPrefix:
+            def test_method(self):
+                pass
+        """)
+    result = testdir.runpytest(p)
+    result.assert_outcomes(passed=1)
+
+def test_nottest_class_decorator(testdir):
+    testdir.makepyfile("""
+        import nose.tools
+        @nose.tools.nottest
+        class TestPrefix:
+            def test_method(self):
+                pass
+        """)
+    reprec = testdir.inline_run()
+    assert not reprec.getfailedcollections()
+    calls = reprec.getreports("pytest_runtest_logreport")
+    assert not calls

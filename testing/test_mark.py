@@ -1,3 +1,5 @@
+import os
+
 import py, pytest
 from _pytest.mark import MarkGenerator as Mark
 
@@ -82,6 +84,22 @@ class TestMark:
         assert g.some.args[0] == "world"
         assert 'reason' not in g.some.kwargs
         assert g.some.kwargs['reason2'] == "456"
+
+
+def test_marked_class_run_twice(testdir, request):
+    """Test fails file is run twice that contains marked class.
+    See issue#683.
+    """
+    py_file = testdir.makepyfile("""
+    import pytest
+    @pytest.mark.parametrize('abc', [1, 2, 3])
+    class Test1(object):
+        def test_1(self, abc):
+            assert abc in [1, 2, 3]
+    """)
+    file_name = os.path.basename(py_file.strpath)
+    rec = testdir.inline_run(file_name, file_name)
+    rec.assertoutcome(passed=6)
 
 
 def test_ini_markers(testdir):
@@ -234,12 +252,13 @@ def test_keyword_option_custom(spec, testdir):
 
 @pytest.mark.parametrize("spec", [
         ("None", ("test_func[None]",)),
-        ("1.3", ("test_func[1.3]",))
+        ("1.3", ("test_func[1.3]",)),
+        ("2-3", ("test_func[2-3]",))
 ])
 def test_keyword_option_parametrize(spec, testdir):
     testdir.makepyfile("""
         import pytest
-        @pytest.mark.parametrize("arg", [None, 1.3])
+        @pytest.mark.parametrize("arg", [None, 1.3, "2-3"])
         def test_func(arg):
             pass
     """)
@@ -249,6 +268,22 @@ def test_keyword_option_parametrize(spec, testdir):
     passed = [x.nodeid.split("::")[-1] for x in passed]
     assert len(passed) == len(passed_result)
     assert list(passed) == list(passed_result)
+
+
+def test_parametrized_collected_from_command_line(testdir):
+    """Parametrized test not collected if test named specified
+       in command line issue#649.
+    """
+    py_file = testdir.makepyfile("""
+        import pytest
+        @pytest.mark.parametrize("arg", [None, 1.3, "2-3"])
+        def test_func(arg):
+            pass
+    """)
+    file_name = os.path.basename(py_file.strpath)
+    rec = testdir.inline_run(file_name + "::" + "test_func")
+    rec.assertoutcome(passed=3)
+
 
 class TestFunctional:
 
@@ -297,7 +332,6 @@ class TestFunctional:
         assert 'hello' in keywords
         assert 'world' in keywords
 
-    @pytest.mark.skipif("sys.version_info < (2,6)")
     def test_mark_per_class_decorator(self, testdir):
         item = testdir.getitem("""
             import pytest
@@ -309,7 +343,6 @@ class TestFunctional:
         keywords = item.keywords
         assert 'hello' in keywords
 
-    @pytest.mark.skipif("sys.version_info < (2,6)")
     def test_mark_per_class_decorator_plus_existing_dec(self, testdir):
         item = testdir.getitem("""
             import pytest
@@ -368,6 +401,71 @@ class TestFunctional:
             print (item, item.keywords)
             assert 'a' in item.keywords
 
+    def test_mark_decorator_subclass_does_not_propagate_to_base(self, testdir):
+        p = testdir.makepyfile("""
+            import pytest
+
+            @pytest.mark.a
+            class Base: pass
+
+            @pytest.mark.b
+            class Test1(Base):
+                def test_foo(self): pass
+
+            class Test2(Base):
+                def test_bar(self): pass
+        """)
+        items, rec = testdir.inline_genitems(p)
+        self.assert_markers(items, test_foo=('a', 'b'), test_bar=('a',))
+
+
+    @pytest.mark.issue568
+    @pytest.mark.xfail(reason="markers smear on methods of base classes")
+    def test_mark_should_not_pass_to_siebling_class(self, testdir):
+        p = testdir.makepyfile("""
+            import pytest
+
+            class TestBase:
+                def test_foo(self):
+                    pass
+
+            @pytest.mark.b
+            class TestSub(TestBase):
+                pass
+
+
+            class TestOtherSub(TestBase):
+                pass
+
+        """)
+        items, rec = testdir.inline_genitems(p)
+        base_item, sub_item, sub_item_other = items
+        assert not hasattr(base_item.obj, 'b')
+        assert not hasattr(sub_item_other.obj, 'b')
+
+
+    def test_mark_decorator_baseclasses_merged(self, testdir):
+        p = testdir.makepyfile("""
+            import pytest
+
+            @pytest.mark.a
+            class Base: pass
+
+            @pytest.mark.b
+            class Base2(Base): pass
+
+            @pytest.mark.c
+            class Test1(Base2):
+                def test_foo(self): pass
+
+            class Test2(Base2):
+                @pytest.mark.d
+                def test_bar(self): pass
+        """)
+        items, rec = testdir.inline_genitems(p)
+        self.assert_markers(items, test_foo=('a', 'b', 'c'),
+                            test_bar=('a', 'b', 'd'))
+
     def test_mark_with_wrong_marker(self, testdir):
         reprec = testdir.inline_runsource("""
                 import pytest
@@ -383,7 +481,8 @@ class TestFunctional:
     def test_mark_dynamically_in_funcarg(self, testdir):
         testdir.makeconftest("""
             import pytest
-            def pytest_funcarg__arg(request):
+            @pytest.fixture
+            def arg(request):
                 request.applymarker(pytest.mark.hello)
             def pytest_terminal_summary(terminalreporter):
                 l = terminalreporter.stats['passed']
@@ -476,6 +575,45 @@ class TestFunctional:
         reprec = testdir.inline_run("-m", "mark1")
         reprec.assertoutcome(passed=1)
 
+    def assert_markers(self, items, **expected):
+        """assert that given items have expected marker names applied to them.
+        expected should be a dict of (item name -> seq of expected marker names)
+
+        .. note:: this could be moved to ``testdir`` if proven to be useful
+        to other modules.
+        """
+        from _pytest.mark import MarkInfo
+        items = dict((x.name, x) for x in items)
+        for name, expected_markers in expected.items():
+            markers = items[name].keywords._markers
+            marker_names = set([name for (name, v) in markers.items()
+                                if isinstance(v, MarkInfo)])
+            assert marker_names == set(expected_markers)
+
+    @pytest.mark.xfail(reason='callspec2.setmulti misuses keywords')
+    @pytest.mark.issue1540
+    def test_mark_from_parameters(self, testdir):
+        testdir.makepyfile("""
+            import pytest
+
+            pytestmark = pytest.mark.skipif(True, reason='skip all')
+
+            # skipifs inside fixture params
+            params = [pytest.mark.skipif(False, reason='dont skip')('parameter')]
+
+
+            @pytest.fixture(params=params)
+            def parameter(request):
+                return request.param
+
+
+            def test_1(parameter):
+                assert True
+        """)
+
+        reprec = testdir.inline_run()
+        reprec.assertoutcome(skipped=1)
+
 class TestKeywordSelection:
     def test_select_simple(self, testdir):
         file_test = testdir.makepyfile("""
@@ -497,7 +635,7 @@ class TestKeywordSelection:
         check('TestClass and test', 'test_method_one')
 
     @pytest.mark.parametrize("keyword", [
-        'xxx', 'xxx and test_2', 'TestClass', 'xxx and -test_1',
+        'xxx', 'xxx and test_2', 'TestClass', 'xxx and not test_1',
         'TestClass and test_2', 'xxx and TestClass and test_2'])
     def test_select_extra_keywords(self, testdir, keyword):
         p = testdir.makepyfile(test_select="""
@@ -508,11 +646,13 @@ class TestKeywordSelection:
                     pass
         """)
         testdir.makepyfile(conftest="""
-            def pytest_pycollect_makeitem(__multicall__, name):
+            import pytest
+            @pytest.hookimpl(hookwrapper=True)
+            def pytest_pycollect_makeitem(name):
+                outcome = yield
                 if name == "TestClass":
-                    item = __multicall__.execute()
+                    item = outcome.get_result()
                     item.extra_keyword_matches.add("xxx")
-                    return item
         """)
         reprec = testdir.inline_run(p.dirpath(), '-s', '-k', keyword)
         py.builtin.print_("keyword", repr(keyword))
@@ -579,4 +719,3 @@ class TestKeywordSelection:
 
         assert_test_is_not_selected("__")
         assert_test_is_not_selected("()")
-

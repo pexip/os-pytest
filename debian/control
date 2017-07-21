@@ -28,7 +28,7 @@ Homepage: http://pytest.org/
 Vcs-Svn: svn://anonscm.debian.org/python-modules/packages/pytest/trunk/
 Vcs-Browser: http://anonscm.debian.org/viewvc/python-modules/packages/pytest/trunk/
 XS-Testsuite: autopkgtest
-XS-Pexip-Upstream: http://ftp.debian.org/debian/ jessie
+XS-Pexip-Upstream: http://ftp.debian.org/debian/ jessie-backports
 
 Package: python-pytest
 Architecture: all

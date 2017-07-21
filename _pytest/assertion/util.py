@@ -1,5 +1,7 @@
 """Utilities for assertion debugging"""
+import pprint
 
+import _pytest._code
 import py
 try:
     from collections import Sequence
@@ -16,6 +18,15 @@ u = py.builtin._totext
 _reprcompare = None
 
 
+# the re-encoding is needed for python2 repr
+# with non-ascii characters (see issue 877 and 1379)
+def ecu(s):
+    try:
+        return u(s, 'utf-8', 'replace')
+    except TypeError:
+        return s
+
+
 def format_explanation(explanation):
     """This formats an explanation
 
@@ -26,40 +37,10 @@ def format_explanation(explanation):
     for when one explanation needs to span multiple lines, e.g. when
     displaying diffs.
     """
-    explanation = _collapse_false(explanation)
+    explanation = ecu(explanation)
     lines = _split_explanation(explanation)
     result = _format_lines(lines)
     return u('\n').join(result)
-
-
-def _collapse_false(explanation):
-    """Collapse expansions of False
-
-    So this strips out any "assert False\n{where False = ...\n}"
-    blocks.
-    """
-    where = 0
-    while True:
-        start = where = explanation.find("False\n{False = ", where)
-        if where == -1:
-            break
-        level = 0
-        for i, c in enumerate(explanation[start:]):
-            if c == "{":
-                level += 1
-            elif c == "}":
-                level -= 1
-                if not level:
-                    break
-        else:
-            raise AssertionError("unbalanced braces: %r" % (explanation,))
-        end = start + i
-        where = end
-        if explanation[end - 1] == '\n':
-            explanation = (explanation[:start] + explanation[start+15:end-1] +
-                           explanation[end+1:])
-            where -= 17
-    return explanation
 
 
 def _split_explanation(explanation):
@@ -72,7 +53,7 @@ def _split_explanation(explanation):
     raw_lines = (explanation or u('')).split('\n')
     lines = [raw_lines[0]]
     for l in raw_lines[1:]:
-        if l.startswith('{') or l.startswith('}') or l.startswith('~'):
+        if l and l[0] in ['{', '}', '~', '>']:
             lines.append(l)
         else:
             lines[-1] += '\\n' + l
@@ -102,13 +83,14 @@ def _format_lines(lines):
             stackcnt.append(0)
             result.append(u(' +') + u('  ')*(len(stack)-1) + s + line[1:])
         elif line.startswith('}'):
-            assert line.startswith('}')
             stack.pop()
             stackcnt.pop()
             result[stack[-1]] += line[1:]
         else:
-            assert line.startswith('~')
-            result.append(u('  ')*len(stack) + line[1:])
+            assert line[0] in ['~', '>']
+            stack[-1] += 1
+            indent = len(stack) if line.startswith('~') else len(stack) - 1
+            result.append(u('  ')*indent + line[1:])
     assert len(stack) == 1
     return result
 
@@ -123,15 +105,23 @@ except NameError:
 def assertrepr_compare(config, op, left, right):
     """Return specialised explanations for some operators/operands"""
     width = 80 - 15 - len(op) - 2  # 15 chars indentation, 1 space around op
-    left_repr = py.io.saferepr(left, maxsize=int(width/2))
+    left_repr = py.io.saferepr(left, maxsize=int(width//2))
     right_repr = py.io.saferepr(right, maxsize=width-len(left_repr))
-    summary = u('%s %s %s') % (left_repr, op, right_repr)
 
-    issequence = lambda x: (isinstance(x, (list, tuple, Sequence))
-                            and not isinstance(x, basestring))
+    summary = u('%s %s %s') % (ecu(left_repr), op, ecu(right_repr))
+
+    issequence = lambda x: (isinstance(x, (list, tuple, Sequence)) and
+                            not isinstance(x, basestring))
     istext = lambda x: isinstance(x, basestring)
     isdict = lambda x: isinstance(x, dict)
     isset = lambda x: isinstance(x, (set, frozenset))
+
+    def isiterable(obj):
+        try:
+            iter(obj)
+            return not istext(obj)
+        except TypeError:
+            return False
 
     verbose = config.getoption('verbose')
     explanation = None
@@ -139,12 +129,19 @@ def assertrepr_compare(config, op, left, right):
         if op == '==':
             if istext(left) and istext(right):
                 explanation = _diff_text(left, right, verbose)
-            elif issequence(left) and issequence(right):
-                explanation = _compare_eq_sequence(left, right, verbose)
-            elif isset(left) and isset(right):
-                explanation = _compare_eq_set(left, right, verbose)
-            elif isdict(left) and isdict(right):
-                explanation = _compare_eq_dict(left, right, verbose)
+            else:
+                if issequence(left) and issequence(right):
+                    explanation = _compare_eq_sequence(left, right, verbose)
+                elif isset(left) and isset(right):
+                    explanation = _compare_eq_set(left, right, verbose)
+                elif isdict(left) and isdict(right):
+                    explanation = _compare_eq_dict(left, right, verbose)
+                if isiterable(left) and isiterable(right):
+                    expl = _compare_eq_iterable(left, right, verbose)
+                    if explanation is not None:
+                        explanation.extend(expl)
+                    else:
+                        explanation = expl
         elif op == 'not in':
             if istext(left) and istext(right):
                 explanation = _notin_text(left, right, verbose)
@@ -152,7 +149,7 @@ def assertrepr_compare(config, op, left, right):
         explanation = [
             u('(pytest_assertion plugin: representation of details failed.  '
               'Probably an object has a faulty __repr__.)'),
-            u(py.code.ExceptionInfo())]
+            u(_pytest._code.ExceptionInfo())]
 
     if not explanation:
         return None
@@ -168,6 +165,7 @@ def _diff_text(left, right, verbose=False):
 
     If the input are bytes they will be safely converted to text.
     """
+    from difflib import ndiff
     explanation = []
     if isinstance(left, py.builtin.bytes):
         left = u(repr(left)[1:-1]).replace(r'\n', '\n')
@@ -194,9 +192,31 @@ def _diff_text(left, right, verbose=False):
                                   'characters in diff, use -v to show') % i]
                 left = left[:-i]
                 right = right[:-i]
+    keepends = True
     explanation += [line.strip('\n')
-                    for line in py.std.difflib.ndiff(left.splitlines(),
-                                                     right.splitlines())]
+                    for line in ndiff(left.splitlines(keepends),
+                                      right.splitlines(keepends))]
+    return explanation
+
+
+def _compare_eq_iterable(left, right, verbose=False):
+    if not verbose:
+        return [u('Use -v to get the full diff')]
+    # dynamic import to speedup pytest
+    import difflib
+
+    try:
+        left_formatting = pprint.pformat(left).splitlines()
+        right_formatting = pprint.pformat(right).splitlines()
+        explanation = [u('Full diff:')]
+    except Exception:
+        # hack: PrettyPrinter.pformat() in python 2 fails when formatting items that can't be sorted(), ie, calling
+        # sorted() on a list would raise. See issue #718.
+        # As a workaround, the full diff is generated by using the repr() string of each item of each container.
+        left_formatting = sorted(repr(x) for x in left)
+        right_formatting = sorted(repr(x) for x in right)
+        explanation = [u('Full diff (fallback to calling repr on each item):')]
+    explanation.extend(line.strip() for line in difflib.ndiff(left_formatting, right_formatting))
     return explanation
 
 
@@ -214,8 +234,7 @@ def _compare_eq_sequence(left, right, verbose=False):
         explanation += [
             u('Right contains more items, first extra item: %s') %
             py.io.saferepr(right[len(left)],)]
-    return explanation  # + _diff_text(py.std.pprint.pformat(left),
-                        #             py.std.pprint.pformat(right))
+    return explanation
 
 
 def _compare_eq_set(left, right, verbose=False):
@@ -242,7 +261,7 @@ def _compare_eq_dict(left, right, verbose=False):
                         len(same)]
     elif same:
         explanation += [u('Common items:')]
-        explanation += py.std.pprint.pformat(same).splitlines()
+        explanation += pprint.pformat(same).splitlines()
     diff = set(k for k in common if left[k] != right[k])
     if diff:
         explanation += [u('Differing items:')]
@@ -252,12 +271,12 @@ def _compare_eq_dict(left, right, verbose=False):
     extra_left = set(left) - set(right)
     if extra_left:
         explanation.append(u('Left contains more items:'))
-        explanation.extend(py.std.pprint.pformat(
+        explanation.extend(pprint.pformat(
             dict((k, left[k]) for k in extra_left)).splitlines())
     extra_right = set(right) - set(left)
     if extra_right:
         explanation.append(u('Right contains more items:'))
-        explanation.extend(py.std.pprint.pformat(
+        explanation.extend(pprint.pformat(
             dict((k, right[k]) for k in extra_right)).splitlines())
     return explanation
 

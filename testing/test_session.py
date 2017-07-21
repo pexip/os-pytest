@@ -1,5 +1,7 @@
 import pytest
 
+from _pytest.main import EXIT_NOTESTSCOLLECTED
+
 class SessionTests:
     def test_basic_testitem_events(self, testdir):
         tfile = testdir.makepyfile("""
@@ -40,7 +42,7 @@ class SessionTests:
         reprec = testdir.inline_run(tfile)
         l = reprec.getfailedcollections()
         assert len(l) == 1
-        out = l[0].longrepr.reprcrash.message
+        out = str(l[0].longrepr)
         assert out.find('does_not_work') != -1
 
     def test_raises_output(self, testdir):
@@ -172,10 +174,6 @@ class TestNewSession(SessionTests):
                 class TestY(TestX):
                     pass
             """,
-            test_two="""
-                import pytest
-                pytest.skip('xxx')
-            """,
             test_three="xxxdsadsadsadsa",
             __init__=""
         )
@@ -187,11 +185,9 @@ class TestNewSession(SessionTests):
         started = reprec.getcalls("pytest_collectstart")
         finished = reprec.getreports("pytest_collectreport")
         assert len(started) == len(finished)
-        assert len(started) == 8 # XXX extra TopCollector
+        assert len(started) == 7 # XXX extra TopCollector
         colfail = [x for x in finished if x.failed]
-        colskipped = [x for x in finished if x.skipped]
         assert len(colfail) == 1
-        assert len(colskipped) == 1
 
     def test_minus_x_import_error(self, testdir):
         testdir.makepyfile(__init__="")
@@ -201,9 +197,16 @@ class TestNewSession(SessionTests):
         colfail = [x for x in finished if x.failed]
         assert len(colfail) == 1
 
+    def test_minus_x_overriden_by_maxfail(self, testdir):
+        testdir.makepyfile(__init__="")
+        testdir.makepyfile(test_one="xxxx", test_two="yyyy", test_third="zzz")
+        reprec = testdir.inline_run("-x", "--maxfail=2", testdir.tmpdir)
+        finished = reprec.getreports("pytest_collectreport")
+        colfail = [x for x in finished if x.failed]
+        assert len(colfail) == 2
+
 
 def test_plugin_specify(testdir):
-    testdir.chdir()
     pytest.raises(ImportError, """
             testdir.parseconfig("-p", "nqweotexistent")
     """)
@@ -214,8 +217,8 @@ def test_plugin_specify(testdir):
 def test_plugin_already_exists(testdir):
     config = testdir.parseconfig("-p", "terminal")
     assert config.option.plugins == ['terminal']
-    config.do_configure()
-    config.do_unconfigure()
+    config._do_configure()
+    config._ensure_unconfigure()
 
 def test_exclude(testdir):
     hellodir = testdir.mkdir("hello")
@@ -240,4 +243,4 @@ def test_sessionfinish_with_start(testdir):
 
     """)
     res = testdir.runpytest("--collect-only")
-    assert res.ret == 0
+    assert res.ret == EXIT_NOTESTSCOLLECTED

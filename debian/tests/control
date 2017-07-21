@@ -1,16 +1,8 @@
-Tests: unittests-python2
-Depends:
- @,
- python-all,
- python-mock (>= 1.0.1),
- python-nose,
- python-pexpect,
- python-pytest-xdist,
- python-twisted-core
+Tests: smoketest-2
+Depends: python-pytest
 
-Tests: unittests-python3
-Depends:
- @,
- python3-all,
- python3-mock (>= 1.0.1),
- python3-nose
+Tests: smoketest-3
+Depends: python3-pytest, python3-all
+
+Tests: smoketest-pypy
+Depends: pypy-pytest

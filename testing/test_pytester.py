@@ -1,11 +1,13 @@
 import pytest
 import os
 from _pytest.pytester import HookRecorder
-from _pytest.core import PluginManager
+from _pytest.config import PytestPluginManager
+from _pytest.main import EXIT_OK, EXIT_TESTSFAILED
 
-def test_reportrecorder(testdir):
+
+def test_make_hook_recorder(testdir):
     item = testdir.getitem("def test_func(): pass")
-    recorder = testdir.getreportrecorder(item.config)
+    recorder = testdir.make_hook_recorder(item.config.pluginmanager)
     assert not recorder.getfailures()
 
     pytest.xfail("internal reportrecorder tests need refactoring")
@@ -62,56 +64,44 @@ def test_parseconfig(testdir):
 
 def test_testdir_runs_with_plugin(testdir):
     testdir.makepyfile("""
-        pytest_plugins = "pytest_pytester"
+        pytest_plugins = "pytester"
         def test_hello(testdir):
             assert 1
     """)
     result = testdir.runpytest()
-    result.stdout.fnmatch_lines([
-        "*1 passed*"
-    ])
+    result.assert_outcomes(passed=1)
 
-def test_hookrecorder_basic():
-    rec = HookRecorder(PluginManager())
-    class ApiClass:
+
+def make_holder():
+    class apiclass:
         def pytest_xyz(self, arg):
             "x"
-    rec.start_recording(ApiClass)
-    rec.hook.pytest_xyz(arg=123)
+        def pytest_xyz_noarg(self):
+            "x"
+
+    apimod = type(os)('api')
+    def pytest_xyz(arg):
+        "x"
+    def pytest_xyz_noarg():
+        "x"
+    apimod.pytest_xyz = pytest_xyz
+    apimod.pytest_xyz_noarg = pytest_xyz_noarg
+    return apiclass, apimod
+
+
+@pytest.mark.parametrize("holder", make_holder())
+def test_hookrecorder_basic(holder):
+    pm = PytestPluginManager()
+    pm.addhooks(holder)
+    rec = HookRecorder(pm)
+    pm.hook.pytest_xyz(arg=123)
     call = rec.popcall("pytest_xyz")
     assert call.arg == 123
     assert call._name == "pytest_xyz"
     pytest.raises(pytest.fail.Exception, "rec.popcall('abc')")
-
-def test_hookrecorder_basic_no_args_hook():
-    rec = HookRecorder(PluginManager())
-    apimod = type(os)('api')
-    def pytest_xyz():
-        "x"
-    apimod.pytest_xyz = pytest_xyz
-    rec.start_recording(apimod)
-    rec.hook.pytest_xyz()
-    call = rec.popcall("pytest_xyz")
-    assert call._name == "pytest_xyz"
-
-def test_functional(testdir, linecomp):
-    reprec = testdir.inline_runsource("""
-        import pytest
-        from _pytest.core import HookRelay, PluginManager
-        pytest_plugins="pytester"
-        def test_func(_pytest):
-            class ApiClass:
-                def pytest_xyz(self, arg):  "x"
-            hook = HookRelay([ApiClass], PluginManager())
-            rec = _pytest.gethookrecorder(hook)
-            class Plugin:
-                def pytest_xyz(self, arg):
-                    return arg + 1
-            rec._pluginmanager.register(Plugin())
-            res = rec.hook.pytest_xyz(arg=41)
-            assert res == [42]
-    """)
-    reprec.assertoutcome(passed=1)
+    pm.hook.pytest_xyz_noarg()
+    call = rec.popcall("pytest_xyz_noarg")
+    assert call._name == "pytest_xyz_noarg"
 
 
 def test_makepyfile_unicode(testdir):
@@ -122,12 +112,11 @@ def test_makepyfile_unicode(testdir):
         unichr = chr
     testdir.makepyfile(unichr(0xfffd))
 
-def test_inprocess_plugins(testdir):
-    class Plugin(object):
-        configured = False
-        def pytest_configure(self, config):
-            self.configured = True
-    plugin = Plugin()
-    testdir.inprocess_run([], [plugin])
-
-    assert plugin.configured
+def test_inline_run_clean_modules(testdir):
+    test_mod = testdir.makepyfile("def test_foo(): assert True")
+    result = testdir.inline_run(str(test_mod))
+    assert result.ret == EXIT_OK
+    # rewrite module, now test should fail if module was re-imported
+    test_mod.write("def test_foo(): assert False")
+    result2 = testdir.inline_run(str(test_mod))
+    assert result2.ret == EXIT_TESTSFAILED

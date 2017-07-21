@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 import sys
+import textwrap
 
-import py, pytest
 import _pytest.assertion as plugin
-from _pytest.assertion import reinterpret
-needsnewassert = pytest.mark.skipif("sys.version_info < (2,6)")
+import py
+import pytest
+from _pytest.assertion import util
+
+PY3 = sys.version_info >= (3, 0)
 
 
 @pytest.fixture
@@ -18,25 +21,239 @@ def mock_config():
     return Config()
 
 
-def interpret(expr):
-    return reinterpret.reinterpret(expr, py.code.Frame(sys._getframe(1)))
+class TestImportHookInstallation:
+
+    @pytest.mark.parametrize('initial_conftest', [True, False])
+    @pytest.mark.parametrize('mode', ['plain', 'rewrite'])
+    def test_conftest_assertion_rewrite(self, testdir, initial_conftest, mode):
+        """Test that conftest files are using assertion rewrite on import.
+        (#1619)
+        """
+        testdir.tmpdir.join('foo/tests').ensure(dir=1)
+        conftest_path = 'conftest.py' if initial_conftest else 'foo/conftest.py'
+        contents = {
+            conftest_path: """
+                import pytest
+                @pytest.fixture
+                def check_first():
+                    def check(values, value):
+                        assert values.pop(0) == value
+                    return check
+            """,
+            'foo/tests/test_foo.py': """
+                def test(check_first):
+                    check_first([10, 30], 30)
+            """
+        }
+        testdir.makepyfile(**contents)
+        result = testdir.runpytest_subprocess('--assert=%s' % mode)
+        if mode == 'plain':
+            expected = 'E       AssertionError'
+        elif mode == 'rewrite':
+            expected = '*assert 10 == 30*'
+        else:
+            assert 0
+        result.stdout.fnmatch_lines([expected])
+
+    @pytest.mark.parametrize('mode', ['plain', 'rewrite'])
+    def test_pytest_plugins_rewrite(self, testdir, mode):
+        contents = {
+            'conftest.py': """
+                pytest_plugins = ['ham']
+            """,
+            'ham.py': """
+                import pytest
+                @pytest.fixture
+                def check_first():
+                    def check(values, value):
+                        assert values.pop(0) == value
+                    return check
+            """,
+            'test_foo.py': """
+                def test_foo(check_first):
+                    check_first([10, 30], 30)
+            """,
+        }
+        testdir.makepyfile(**contents)
+        result = testdir.runpytest_subprocess('--assert=%s' % mode)
+        if mode == 'plain':
+            expected = 'E       AssertionError'
+        elif mode == 'rewrite':
+            expected = '*assert 10 == 30*'
+        else:
+            assert 0
+        result.stdout.fnmatch_lines([expected])
+
+    @pytest.mark.parametrize('mode', ['str', 'list'])
+    def test_pytest_plugins_rewrite_module_names(self, testdir, mode):
+        """Test that pluginmanager correct marks pytest_plugins variables
+        for assertion rewriting if they are defined as plain strings or
+        list of strings (#1888).
+        """
+        plugins = '"ham"' if mode == 'str' else '["ham"]'
+        contents = {
+            'conftest.py': """
+                pytest_plugins = {plugins}
+            """.format(plugins=plugins),
+            'ham.py': """
+                import pytest
+            """,
+            'test_foo.py': """
+                def test_foo(pytestconfig):
+                    assert 'ham' in pytestconfig.pluginmanager.rewrite_hook._must_rewrite
+            """,
+        }
+        testdir.makepyfile(**contents)
+        result = testdir.runpytest_subprocess('--assert=rewrite')
+        assert result.ret == 0
+
+    @pytest.mark.parametrize('mode', ['plain', 'rewrite'])
+    @pytest.mark.parametrize('plugin_state', ['development', 'installed'])
+    def test_installed_plugin_rewrite(self, testdir, mode, plugin_state):
+        # Make sure the hook is installed early enough so that plugins
+        # installed via setuptools are re-written.
+        testdir.tmpdir.join('hampkg').ensure(dir=1)
+        contents = {
+            'hampkg/__init__.py': """
+                import pytest
+
+                @pytest.fixture
+                def check_first2():
+                    def check(values, value):
+                        assert values.pop(0) == value
+                    return check
+            """,
+            'spamplugin.py': """
+            import pytest
+            from hampkg import check_first2
+
+            @pytest.fixture
+            def check_first():
+                def check(values, value):
+                    assert values.pop(0) == value
+                return check
+            """,
+            'mainwrapper.py': """
+            import pytest, pkg_resources
+
+            plugin_state = "{plugin_state}"
+
+            class DummyDistInfo:
+                project_name = 'spam'
+                version = '1.0'
+
+                def _get_metadata(self, name):
+                    # 'RECORD' meta-data only available in installed plugins
+                    if name == 'RECORD' and plugin_state == "installed":
+                        return ['spamplugin.py,sha256=abc,123',
+                                'hampkg/__init__.py,sha256=abc,123']
+                    # 'SOURCES.txt' meta-data only available for plugins in development mode
+                    elif name == 'SOURCES.txt' and plugin_state == "development":
+                        return ['spamplugin.py',
+                                'hampkg/__init__.py']
+                    return []
+
+            class DummyEntryPoint:
+                name = 'spam'
+                module_name = 'spam.py'
+                attrs = ()
+                extras = None
+                dist = DummyDistInfo()
+
+                def load(self, require=True, *args, **kwargs):
+                    import spamplugin
+                    return spamplugin
+
+            def iter_entry_points(name):
+                yield DummyEntryPoint()
+
+            pkg_resources.iter_entry_points = iter_entry_points
+            pytest.main()
+            """.format(plugin_state=plugin_state),
+            'test_foo.py': """
+            def test(check_first):
+                check_first([10, 30], 30)
+
+            def test2(check_first2):
+                check_first([10, 30], 30)
+            """,
+        }
+        testdir.makepyfile(**contents)
+        result = testdir.run(sys.executable, 'mainwrapper.py', '-s', '--assert=%s' % mode)
+        if mode == 'plain':
+            expected = 'E       AssertionError'
+        elif mode == 'rewrite':
+            expected = '*assert 10 == 30*'
+        else:
+            assert 0
+        result.stdout.fnmatch_lines([expected])
+
+    def test_rewrite_ast(self, testdir):
+        testdir.tmpdir.join('pkg').ensure(dir=1)
+        contents = {
+            'pkg/__init__.py': """
+                import pytest
+                pytest.register_assert_rewrite('pkg.helper')
+            """,
+            'pkg/helper.py': """
+                def tool():
+                    a, b = 2, 3
+                    assert a == b
+            """,
+            'pkg/plugin.py': """
+                import pytest, pkg.helper
+                @pytest.fixture
+                def tool():
+                    return pkg.helper.tool
+            """,
+            'pkg/other.py': """
+                l = [3, 2]
+                def tool():
+                    assert l.pop() == 3
+            """,
+            'conftest.py': """
+                pytest_plugins = ['pkg.plugin']
+            """,
+            'test_pkg.py': """
+                import pkg.other
+                def test_tool(tool):
+                    tool()
+                def test_other():
+                    pkg.other.tool()
+            """,
+        }
+        testdir.makepyfile(**contents)
+        result = testdir.runpytest_subprocess('--assert=rewrite')
+        result.stdout.fnmatch_lines(['>*assert a == b*',
+                                     'E*assert 2 == 3*',
+                                     '>*assert l.pop() == 3*',
+                                     'E*AssertionError'])
+
+    def test_register_assert_rewrite_checks_types(self):
+        with pytest.raises(TypeError):
+            pytest.register_assert_rewrite(['pytest_tests_internal_non_existing'])
+        pytest.register_assert_rewrite('pytest_tests_internal_non_existing',
+                                       'pytest_tests_internal_non_existing2')
+
 
 class TestBinReprIntegration:
-    pytestmark = needsnewassert
 
     def test_pytest_assertrepr_compare_called(self, testdir):
         testdir.makeconftest("""
+            import pytest
             l = []
             def pytest_assertrepr_compare(op, left, right):
                 l.append((op, left, right))
-            def pytest_funcarg__l(request):
+
+            @pytest.fixture
+            def list(request):
                 return l
         """)
         testdir.makepyfile("""
             def test_hello():
                 assert 0 == 1
-            def test_check(l):
-                assert l == [("==", 0, 1)]
+            def test_check(list):
+                assert list == [("==", 0, 1)]
         """)
         result = testdir.runpytest("-v")
         result.stdout.fnmatch_lines([
@@ -84,6 +301,48 @@ class TestAssert_reprcompare:
     def test_list(self):
         expl = callequal([0, 1], [0, 2])
         assert len(expl) > 1
+
+    @pytest.mark.parametrize(
+        ['left', 'right', 'expected'], [
+            ([0, 1], [0, 2], """
+                Full diff:
+                - [0, 1]
+                ?     ^
+                + [0, 2]
+                ?     ^
+            """),
+            ({0: 1}, {0: 2}, """
+                Full diff:
+                - {0: 1}
+                ?     ^
+                + {0: 2}
+                ?     ^
+            """),
+            (set([0, 1]), set([0, 2]), """
+                Full diff:
+                - set([0, 1])
+                ?         ^
+                + set([0, 2])
+                ?         ^
+            """ if not PY3 else """
+                Full diff:
+                - {0, 1}
+                ?     ^
+                + {0, 2}
+                ?     ^
+            """)
+        ]
+    )
+    def test_iterable_full_diff(self, left, right, expected):
+        """Test the full diff assertion failure explanation.
+
+        When verbose is False, then just a -v notice to get the diff is rendered,
+        when verbose is True, then ndiff of the pprint is returned.
+        """
+        expl = callequal(left, right, verbose=False)
+        assert expl[-1] == 'Use -v to get the full diff'
+        expl = '\n'.join(callequal(left, right, verbose=True))
+        assert expl.endswith(textwrap.dedent(expected).strip())
 
     def test_list_different_lenghts(self):
         expl = callequal([0, 1], [0, 1, 2])
@@ -185,6 +444,20 @@ class TestAssert_reprcompare:
         assert expl[1] == py.builtin._totext('- £€', 'utf-8')
         assert expl[2] == py.builtin._totext('+ £', 'utf-8')
 
+    def test_nonascii_text(self):
+        """
+        :issue: 877
+        non ascii python2 str caused a UnicodeDecodeError
+        """
+        class A(str):
+            def __repr__(self):
+                return '\xff'
+        expl = callequal(A(), '1')
+        assert expl
+
+    def test_format_nonascii_explanation(self):
+        assert util.format_explanation('λ')
+
     def test_mojibake(self):
         # issue 429
         left = 'e'
@@ -201,7 +474,7 @@ class TestAssert_reprcompare:
 
 class TestFormatExplanation:
 
-    def test_speical_chars_full(self, testdir):
+    def test_special_chars_full(self, testdir):
         # Issue 453, for the bug this would raise IndexError
         testdir.makepyfile("""
             def test_foo():
@@ -212,6 +485,83 @@ class TestFormatExplanation:
         result.stdout.fnmatch_lines([
             "*AssertionError*",
         ])
+
+    def test_fmt_simple(self):
+        expl = 'assert foo'
+        assert util.format_explanation(expl) == 'assert foo'
+
+    def test_fmt_where(self):
+        expl = '\n'.join(['assert 1',
+                          '{1 = foo',
+                          '} == 2'])
+        res = '\n'.join(['assert 1 == 2',
+                         ' +  where 1 = foo'])
+        assert util.format_explanation(expl) == res
+
+    def test_fmt_and(self):
+        expl = '\n'.join(['assert 1',
+                          '{1 = foo',
+                          '} == 2',
+                          '{2 = bar',
+                          '}'])
+        res = '\n'.join(['assert 1 == 2',
+                         ' +  where 1 = foo',
+                         ' +  and   2 = bar'])
+        assert util.format_explanation(expl) == res
+
+    def test_fmt_where_nested(self):
+        expl = '\n'.join(['assert 1',
+                          '{1 = foo',
+                          '{foo = bar',
+                          '}',
+                          '} == 2'])
+        res = '\n'.join(['assert 1 == 2',
+                         ' +  where 1 = foo',
+                         ' +    where foo = bar'])
+        assert util.format_explanation(expl) == res
+
+    def test_fmt_newline(self):
+        expl = '\n'.join(['assert "foo" == "bar"',
+                          '~- foo',
+                          '~+ bar'])
+        res = '\n'.join(['assert "foo" == "bar"',
+                         '  - foo',
+                         '  + bar'])
+        assert util.format_explanation(expl) == res
+
+    def test_fmt_newline_escaped(self):
+        expl = '\n'.join(['assert foo == bar',
+                          'baz'])
+        res = 'assert foo == bar\\nbaz'
+        assert util.format_explanation(expl) == res
+
+    def test_fmt_newline_before_where(self):
+        expl = '\n'.join(['the assertion message here',
+                          '>assert 1',
+                          '{1 = foo',
+                          '} == 2',
+                          '{2 = bar',
+                          '}'])
+        res = '\n'.join(['the assertion message here',
+                         'assert 1 == 2',
+                         ' +  where 1 = foo',
+                         ' +  and   2 = bar'])
+        assert util.format_explanation(expl) == res
+
+    def test_fmt_multi_newline_before_where(self):
+        expl = '\n'.join(['the assertion',
+                          '~message here',
+                          '>assert 1',
+                          '{1 = foo',
+                          '} == 2',
+                          '{2 = bar',
+                          '}'])
+        res = '\n'.join(['the assertion',
+                         '  message here',
+                         'assert 1 == 2',
+                         ' +  where 1 = foo',
+                         ' +  and   2 = bar'])
+        assert util.format_explanation(expl) == res
 
 
 def test_python25_compile_issue257(testdir):
@@ -227,7 +577,6 @@ def test_python25_compile_issue257(testdir):
             *1 failed*
     """)
 
-@needsnewassert
 def test_rewritten(testdir):
     testdir.makepyfile("""
         def test_rewritten():
@@ -240,7 +589,6 @@ def test_reprcompare_notin(mock_config):
         mock_config, 'not in', 'foo', 'aaafoobbb')[1:]
     assert detail == ["'foo' is contained here:", '  aaafoobbb', '?    +++']
 
-@needsnewassert
 def test_pytest_assertrepr_compare_integration(testdir):
     testdir.makepyfile("""
         def test_hello():
@@ -257,7 +605,6 @@ def test_pytest_assertrepr_compare_integration(testdir):
         "*E*50*",
     ])
 
-@needsnewassert
 def test_sequence_comparison_uses_repr(testdir):
     testdir.makepyfile("""
         def test_hello():
@@ -276,8 +623,7 @@ def test_sequence_comparison_uses_repr(testdir):
     ])
 
 
-@pytest.mark.xfail("sys.version_info < (2,6)")
-def test_assert_compare_truncate_longmessage(testdir):
+def test_assert_compare_truncate_longmessage(monkeypatch, testdir):
     testdir.makepyfile(r"""
         def test_long():
             a = list(range(200))
@@ -286,10 +632,16 @@ def test_assert_compare_truncate_longmessage(testdir):
             b = '\n'.join(map(str, b))
             assert a == b
     """)
+    monkeypatch.delenv('CI', raising=False)
 
     result = testdir.runpytest()
+    # without -vv, truncate the message showing a few diff lines only
     result.stdout.fnmatch_lines([
-        "*truncated*use*-vv*",
+        "*- 1",
+        "*- 3",
+        "*- 5",
+        "*- 7",
+        "*truncated (193 more lines)*use*-vv*",
     ])
 
 
@@ -298,8 +650,13 @@ def test_assert_compare_truncate_longmessage(testdir):
         "*- 197",
     ])
 
+    monkeypatch.setenv('CI', '1')
+    result = testdir.runpytest()
+    result.stdout.fnmatch_lines([
+        "*- 197",
+    ])
 
-@needsnewassert
+
 def test_assertrepr_loaded_per_dir(testdir):
     testdir.makepyfile(test_base=['def test_base(): assert 1 == 2'])
     a = testdir.mkdir('a')
@@ -330,24 +687,8 @@ def test_assertion_options(testdir):
     """)
     result = testdir.runpytest()
     assert "3 == 4" in result.stdout.str()
-    off_options = (("--no-assert",),
-                   ("--nomagic",),
-                   ("--no-assert", "--nomagic"),
-                   ("--assert=plain",),
-                   ("--assert=plain", "--no-assert"),
-                   ("--assert=plain", "--nomagic"),
-                   ("--assert=plain", "--no-assert", "--nomagic"))
-    for opt in off_options:
-        result = testdir.runpytest(*opt)
-        assert "3 == 4" not in result.stdout.str()
-
-def test_old_assert_mode(testdir):
-    testdir.makepyfile("""
-        def test_in_old_mode():
-            assert "@py_builtins" not in globals()
-    """)
-    result = testdir.runpytest("--assert=reinterp")
-    assert result.ret == 0
+    result = testdir.runpytest_subprocess("--assert=plain")
+    assert "3 == 4" not in result.stdout.str()
 
 def test_triple_quoted_string_issue113(testdir):
     testdir.makepyfile("""
@@ -408,14 +749,14 @@ def test_traceback_failure(testdir):
         "*test_traceback_failure.py:4: AssertionError"
     ])
 
-@pytest.mark.skipif("sys.version_info < (2,5) or '__pypy__' in sys.builtin_module_names or sys.platform.startswith('java')" )
+@pytest.mark.skipif("'__pypy__' in sys.builtin_module_names or sys.platform.startswith('java')" )
 def test_warn_missing(testdir):
     testdir.makepyfile("")
     result = testdir.run(sys.executable, "-OO", "-m", "pytest", "-h")
     result.stderr.fnmatch_lines([
         "*WARNING*assert statements are not executed*",
     ])
-    result = testdir.run(sys.executable, "-OO", "-m", "pytest", "--no-assert")
+    result = testdir.run(sys.executable, "-OO", "-m", "pytest")
     result.stderr.fnmatch_lines([
         "*WARNING*assert statements are not executed*",
     ])
@@ -446,3 +787,92 @@ def test_AssertionError_message(testdir):
         *assert 0, (x,y)*
         *AssertionError: (1, 2)*
     """)
+
+@pytest.mark.skipif(PY3, reason='This bug does not exist on PY3')
+def test_set_with_unsortable_elements():
+    # issue #718
+    class UnsortableKey(object):
+        def __init__(self, name):
+            self.name = name
+
+        def __lt__(self, other):
+            raise RuntimeError()
+
+        def __repr__(self):
+            return 'repr({0})'.format(self.name)
+
+        def __eq__(self, other):
+            return self.name == other.name
+
+        def __hash__(self):
+            return hash(self.name)
+
+    left_set = set(UnsortableKey(str(i)) for i in range(1, 3))
+    right_set = set(UnsortableKey(str(i)) for i in range(2, 4))
+    expl = callequal(left_set, right_set, verbose=True)
+    # skip first line because it contains the "construction" of the set, which does not have a guaranteed order
+    expl = expl[1:]
+    dedent = textwrap.dedent("""
+        Extra items in the left set:
+        repr(1)
+        Extra items in the right set:
+        repr(3)
+        Full diff (fallback to calling repr on each item):
+        - repr(1)
+        repr(2)
+        + repr(3)
+    """).strip()
+    assert '\n'.join(expl) == dedent
+
+def test_diff_newline_at_end(monkeypatch, testdir):
+    testdir.makepyfile(r"""
+        def test_diff():
+            assert 'asdf' == 'asdf\n'
+    """)
+
+    result = testdir.runpytest()
+    result.stdout.fnmatch_lines(r"""
+        *assert 'asdf' == 'asdf\n'
+        *  - asdf
+        *  + asdf
+        *  ?     +
+    """)
+
+def test_assert_tuple_warning(testdir):
+    testdir.makepyfile("""
+        def test_tuple():
+            assert(False, 'you shall not pass')
+    """)
+    result = testdir.runpytest('-rw')
+    result.stdout.fnmatch_lines('WR1*:2 assertion is always true*')
+
+def test_assert_indirect_tuple_no_warning(testdir):
+    testdir.makepyfile("""
+        def test_tuple():
+            tpl = ('foo', 'bar')
+            assert tpl
+    """)
+    result = testdir.runpytest('-rw')
+    output = '\n'.join(result.stdout.lines)
+    assert 'WR1' not in output
+
+def test_assert_with_unicode(monkeypatch, testdir):
+    testdir.makepyfile(u"""
+        # -*- coding: utf-8 -*-
+        def test_unicode():
+            assert u'유니코드' == u'Unicode'
+    """)
+    result = testdir.runpytest()
+    result.stdout.fnmatch_lines(['*AssertionError*'])
+
+def test_issue_1944(testdir):
+    testdir.makepyfile("""
+        def f():
+            return
+
+        assert f() == 10
+    """)
+    result = testdir.runpytest()
+    result.stdout.fnmatch_lines(["*1 error*"])
+    assert "AttributeError: 'Module' object has no attribute '_obj'" not in result.stdout.str()
+

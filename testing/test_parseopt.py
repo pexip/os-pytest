@@ -29,6 +29,9 @@ class TestParser:
         assert argument.dest == 'test'
         argument = parseopt.Argument('-t', '--test', dest='abc')
         assert argument.dest == 'abc'
+        assert str(argument) == (
+            "Argument(_short_opts: ['-t'], _long_opts: ['--test'], dest: 'abc')"
+        )
 
     def test_argument_type(self):
         argument = parseopt.Argument('-t', dest='abc', type='int')
@@ -77,6 +80,13 @@ class TestParser:
         assert len(group.options) == 1
         assert isinstance(group.options[0], parseopt.Argument)
 
+    def test_group_addoption_conflict(self):
+        group = parseopt.OptionGroup("hello again")
+        group.addoption("--option1", "--option-1", action="store_true")
+        with pytest.raises(ValueError) as err:
+            group.addoption("--option1", "--option-one", action="store_true")
+        assert str(set(["--option1"])) in str(err.value)
+
     def test_group_shortopt_lowercase(self, parser):
         group = parser.getgroup("hello")
         pytest.raises(ValueError, """
@@ -107,6 +117,15 @@ class TestParser:
         parser.addoption("--hello", action="store_true")
         ns = parser.parse_known_args(["x", "--y", "--hello", "this"])
         assert ns.hello
+        assert ns.file_or_dir == ['x']
+
+    def test_parse_known_and_unknown_args(self, parser):
+        parser.addoption("--hello", action="store_true")
+        ns, unknown = parser.parse_known_and_unknown_args(["x", "--y",
+                                                           "--hello", "this"])
+        assert ns.hello
+        assert ns.file_or_dir == ['x']
+        assert unknown == ['--y', 'this']
 
     def test_parse_will_set_default(self, parser):
         parser.addoption("--hello", dest="hello", default="x", action="store")
@@ -145,10 +164,6 @@ class TestParser:
         assert args.R == True
         assert args.S == False
 
-    def test_parse_removes_line_number_from_positional_arguments(self, parser):
-        args = parser.parse(['path@2::func', 'path2@5::func2[param with @]'])
-        assert getattr(args, parseopt.FILE_OR_DIR) == ['path::func', 'path2::func2[param with @]']
-
     def test_parse_defaultgetter(self):
         def defaultget(option):
             if not hasattr(option, 'type'):
@@ -166,7 +181,6 @@ class TestParser:
         assert option.this == 42
         assert option.no is False
 
-    @pytest.mark.skipif("sys.version_info < (2,5)")
     def test_drop_short_helper(self):
         parser = py.std.argparse.ArgumentParser(formatter_class=parseopt.DropShorterLongHelpFormatter)
         parser.add_argument('-t', '--twoword', '--duo', '--two-word', '--two',
@@ -208,20 +222,17 @@ class TestParser:
         assert args.abc_def is False
         assert args.klm_hij is True
 
-    @pytest.mark.skipif("sys.version_info < (2,5)")
     def test_drop_short_2(self, parser):
         parser.addoption('--func-arg', '--doit', action='store_true')
         args = parser.parse(['--doit'])
         assert args.func_arg is True
 
-    @pytest.mark.skipif("sys.version_info < (2,5)")
     def test_drop_short_3(self, parser):
         parser.addoption('--func-arg', '--funcarg', '--doit', action='store_true')
         args = parser.parse(['abcd'])
         assert args.func_arg is False
         assert args.file_or_dir == ['abcd']
 
-    @pytest.mark.skipif("sys.version_info < (2,5)")
     def test_drop_short_help0(self, parser, capsys):
         parser.addoption('--func-args', '--doit', help = 'foo',
                          action='store_true')
@@ -230,7 +241,6 @@ class TestParser:
         assert '--func-args, --doit  foo' in  help
 
     # testing would be more helpful with all help generated
-    @pytest.mark.skipif("sys.version_info < (2,5)")
     def test_drop_short_help1(self, parser, capsys):
         group = parser.getgroup("general")
         group.addoption('--doit', '--func-args', action='store_true', help='foo')
@@ -241,14 +251,13 @@ class TestParser:
         assert '-doit, --func-args  foo' in  help
 
 
-@pytest.mark.skipif("sys.version_info < (2,6)")
 def test_argcomplete(testdir, monkeypatch):
     if not py.path.local.sysfind('bash'):
         pytest.skip("bash not available")
     script = str(testdir.tmpdir.join("test_argcomplete"))
     pytest_bin = sys.argv[0]
-    if "py.test" not in os.path.basename(pytest_bin):
-        pytest.skip("need to be run with py.test executable, not %s" %(pytest_bin,))
+    if "pytest" not in os.path.basename(pytest_bin):
+        pytest.skip("need to be run with pytest executable, not %s" %(pytest_bin,))
 
     with open(str(script), 'w') as fp:
         # redirect output from argcomplete to stdin and stderr is not trivial
@@ -263,8 +272,8 @@ def test_argcomplete(testdir, monkeypatch):
     monkeypatch.setenv('COMP_WORDBREAKS', ' \\t\\n"\\\'><=;|&(:')
 
     arg = '--fu'
-    monkeypatch.setenv('COMP_LINE', "py.test " + arg)
-    monkeypatch.setenv('COMP_POINT', str(len("py.test " + arg)))
+    monkeypatch.setenv('COMP_LINE', "pytest " + arg)
+    monkeypatch.setenv('COMP_POINT', str(len("pytest " + arg)))
     result = testdir.run('bash', str(script), arg)
     if result.ret == 255:
         # argcomplete not found
@@ -281,8 +290,7 @@ def test_argcomplete(testdir, monkeypatch):
         return
     os.mkdir('test_argcomplete.d')
     arg = 'test_argc'
-    monkeypatch.setenv('COMP_LINE', "py.test " + arg)
-    monkeypatch.setenv('COMP_POINT', str(len('py.test ' + arg)))
+    monkeypatch.setenv('COMP_LINE', "pytest " + arg)
+    monkeypatch.setenv('COMP_POINT', str(len('pytest ' + arg)))
     result = testdir.run('bash', str(script), arg)
     result.stdout.fnmatch_lines(["test_argcomplete", "test_argcomplete.d/"])
-

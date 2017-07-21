@@ -1,4 +1,5 @@
 from pytest import raises
+import _pytest._code
 import py
 
 def otherfunc(a,b):
@@ -159,7 +160,7 @@ def test_dynamic_compile_shows_nicely():
     src = 'def foo():\n assert 1 == 0\n'
     name = 'abc-123'
     module = py.std.imp.new_module(name)
-    code = py.code.compile(src, name, 'exec')
+    code = _pytest._code.compile(src, name, 'exec')
     py.builtin.exec_(code, module.__dict__)
     py.std.sys.modules[name] = module
     module.foo()
@@ -211,3 +212,27 @@ class TestMoreErrors:
         finally:
             x = 0
 
+
+class TestCustomAssertMsg:
+
+    def test_single_line(self):
+        class A:
+            a = 1
+        b = 2
+        assert A.a == b, "A.a appears not to be b"
+
+    def test_multiline(self):
+        class A:
+            a = 1
+        b = 2
+        assert A.a == b, "A.a appears not to be b\n" \
+            "or does not appear to be b\none of those"
+
+    def test_custom_repr(self):
+        class JSON:
+            a = 1
+            def __repr__(self):
+                return "This is JSON\n{\n  'foo': 'bar'\n}"
+        a = JSON()
+        b = 2
+        assert a.a == b, a

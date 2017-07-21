@@ -1,31 +1,41 @@
-
-import py
 import sys
 
-from test_doctest import xfail_if_pdbpp_installed
+import _pytest._code
+import pytest
+
+
+def runpdb_and_get_report(testdir, source):
+    p = testdir.makepyfile(source)
+    result = testdir.runpytest_inprocess("--pdb", p)
+    reports = result.reprec.getreports("pytest_runtest_logreport")
+    assert len(reports) == 3, reports # setup/call/teardown
+    return reports[1]
+
 
 class TestPDB:
-    def pytest_funcarg__pdblist(self, request):
-        monkeypatch = request.getfuncargvalue("monkeypatch")
+
+    @pytest.fixture
+    def pdblist(self, request):
+        monkeypatch = request.getfixturevalue("monkeypatch")
         pdblist = []
         def mypdb(*args):
             pdblist.append(args)
-        plugin = request.config.pluginmanager.getplugin('pdb')
+        plugin = request.config.pluginmanager.getplugin('debugging')
         monkeypatch.setattr(plugin, 'post_mortem', mypdb)
         return pdblist
 
     def test_pdb_on_fail(self, testdir, pdblist):
-        rep = testdir.inline_runsource1('--pdb', """
+        rep = runpdb_and_get_report(testdir, """
             def test_func():
                 assert 0
         """)
         assert rep.failed
         assert len(pdblist) == 1
-        tb = py.code.Traceback(pdblist[0][0])
+        tb = _pytest._code.Traceback(pdblist[0][0])
         assert tb[-1].name == "test_func"
 
     def test_pdb_on_xfail(self, testdir, pdblist):
-        rep = testdir.inline_runsource1('--pdb', """
+        rep = runpdb_and_get_report(testdir, """
             import pytest
             @pytest.mark.xfail
             def test_func():
@@ -35,7 +45,7 @@ class TestPDB:
         assert not pdblist
 
     def test_pdb_on_skip(self, testdir, pdblist):
-        rep = testdir.inline_runsource1('--pdb', """
+        rep = runpdb_and_get_report(testdir, """
             import pytest
             def test_func():
                 pytest.skip("hello")
@@ -44,7 +54,7 @@ class TestPDB:
         assert len(pdblist) == 0
 
     def test_pdb_on_BdbQuit(self, testdir, pdblist):
-        rep = testdir.inline_runsource1('--pdb', """
+        rep = runpdb_and_get_report(testdir, """
             import bdb
             def test_func():
                 raise bdb.BdbQuit
@@ -66,6 +76,41 @@ class TestPDB:
         rest = child.read().decode("utf8")
         assert "1 failed" in rest
         assert "def test_1" not in rest
+        if child.isalive():
+            child.wait()
+
+    def test_pdb_unittest_postmortem(self, testdir):
+        p1 = testdir.makepyfile("""
+            import unittest
+            class Blub(unittest.TestCase):
+                def tearDown(self):
+                    self.filename = None
+                def test_false(self):
+                    self.filename = 'debug' + '.me'
+                    assert 0
+        """)
+        child = testdir.spawn_pytest("--pdb %s" % p1)
+        child.expect('(Pdb)')
+        child.sendline('p self.filename')
+        child.sendeof()
+        rest = child.read().decode("utf8")
+        assert 'debug.me' in rest
+        if child.isalive():
+            child.wait()
+
+    def test_pdb_interaction_capture(self, testdir):
+        p1 = testdir.makepyfile("""
+            def test_1():
+                print("getrekt")
+                assert False
+        """)
+        child = testdir.spawn_pytest("--pdb %s" % p1)
+        child.expect("getrekt")
+        child.expect("(Pdb)")
+        child.sendeof()
+        rest = child.read().decode("utf8")
+        assert "1 failed" in rest
+        assert "getrekt" not in rest
         if child.isalive():
             child.wait()
 
@@ -187,7 +232,6 @@ class TestPDB:
         if child.isalive():
             child.wait()
 
-    @xfail_if_pdbpp_installed
     def test_pdb_interaction_doctest(self, testdir):
         p1 = testdir.makepyfile("""
             import pytest
@@ -262,8 +306,55 @@ class TestPDB:
 
     def test_pdb_collection_failure_is_shown(self, testdir):
         p1 = testdir.makepyfile("""xxx """)
-        result = testdir.runpytest("--pdb", p1)
+        result = testdir.runpytest_subprocess("--pdb", p1)
         result.stdout.fnmatch_lines([
             "*NameError*xxx*",
             "*1 error*",
         ])
+
+    def test_enter_pdb_hook_is_called(self, testdir):
+        testdir.makeconftest("""
+            def pytest_enter_pdb(config):
+                assert config.testing_verification == 'configured'
+                print 'enter_pdb_hook'
+
+            def pytest_configure(config):
+                config.testing_verification = 'configured'
+        """)
+        p1 = testdir.makepyfile("""
+            import pytest
+
+            def test_foo():
+                pytest.set_trace()
+        """)
+        child = testdir.spawn_pytest(str(p1))
+        child.expect("enter_pdb_hook")
+        child.send('c\n')
+        child.sendeof()
+        if child.isalive():
+            child.wait()
+
+    def test_pdb_custom_cls(self, testdir):
+        called = []
+
+        # install dummy debugger class and track which methods were called on it
+        class _CustomPdb:
+            def __init__(self, *args, **kwargs):
+                called.append("init")
+
+            def reset(self):
+                called.append("reset")
+
+            def interaction(self, *args):
+                called.append("interaction")
+
+        _pytest._CustomPdb = _CustomPdb
+
+        p1 = testdir.makepyfile("""xxx """)
+        result = testdir.runpytest_inprocess(
+            "--pdbcls=_pytest:_CustomPdb", p1)
+        result.stdout.fnmatch_lines([
+            "*NameError*xxx*",
+            "*1 error*",
+        ])
+        assert called == ["init", "reset", "interaction"]

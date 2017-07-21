@@ -4,6 +4,7 @@ per-test stdout/stderr capturing mechanism.
 """
 from __future__ import with_statement
 
+import contextlib
 import sys
 import os
 from tempfile import TemporaryFile
@@ -20,7 +21,7 @@ patchsysdict = {0: 'stdin', 1: 'stdout', 2: 'stderr'}
 def pytest_addoption(parser):
     group = parser.getgroup("general")
     group._addoption(
-        '--capture', action="store", 
+        '--capture', action="store",
         default="fd" if hasattr(os, "dup") else "sys",
         metavar="method", choices=['fd', 'sys', 'no'],
         help="per-test capturing method: one of fd|sys|no.")
@@ -29,35 +30,30 @@ def pytest_addoption(parser):
         help="shortcut for --capture=no.")
 
 
-@pytest.mark.tryfirst
-def pytest_load_initial_conftests(early_config, parser, args, __multicall__):
+@pytest.hookimpl(hookwrapper=True)
+def pytest_load_initial_conftests(early_config, parser, args):
+    _readline_workaround()
     ns = early_config.known_args_namespace
     pluginmanager = early_config.pluginmanager
-    if ns.capture == "no":
-        return
     capman = CaptureManager(ns.capture)
     pluginmanager.register(capman, "capturemanager")
 
     # make sure that capturemanager is properly reset at final shutdown
-    pluginmanager.add_shutdown(capman.reset_capturings)
+    early_config.add_cleanup(capman.reset_capturings)
 
     # make sure logging does not raise exceptions at the end
     def silence_logging_at_shutdown():
         if "logging" in sys.modules:
             sys.modules["logging"].raiseExceptions = False
-    pluginmanager.add_shutdown(silence_logging_at_shutdown)
+    early_config.add_cleanup(silence_logging_at_shutdown)
 
     # finally trigger conftest loading but while capturing (issue93)
     capman.init_capturings()
-    try:
-        try:
-            return __multicall__.execute()
-        finally:
-            out, err = capman.suspendcapture()
-    except:
+    outcome = yield
+    out, err = capman.suspendcapture()
+    if outcome.excinfo is not None:
         sys.stdout.write(out)
         sys.stderr.write(err)
-        raise
 
 
 class CaptureManager:
@@ -92,8 +88,10 @@ class CaptureManager:
         self.deactivate_funcargs()
         cap = getattr(self, "_capturing", None)
         if cap is not None:
-            outerr = cap.readouterr()
-            cap.suspend_capturing(in_=in_)
+            try:
+                outerr = cap.readouterr()
+            finally:
+                cap.suspend_capturing(in_=in_)
             return outerr
 
     def activate_funcargs(self, pyfuncitem):
@@ -107,28 +105,27 @@ class CaptureManager:
         if capfuncarg is not None:
             capfuncarg.close()
 
-    @pytest.mark.tryfirst
-    def pytest_make_collect_report(self, __multicall__, collector):
-        if not isinstance(collector, pytest.File):
-            return
-        self.resumecapture()
-        try:
-            rep = __multicall__.execute()
-        finally:
+    @pytest.hookimpl(hookwrapper=True)
+    def pytest_make_collect_report(self, collector):
+        if isinstance(collector, pytest.File):
+            self.resumecapture()
+            outcome = yield
             out, err = self.suspendcapture()
-        if out:
-            rep.sections.append(("Captured stdout", out))
-        if err:
-            rep.sections.append(("Captured stderr", err))
-        return rep
+            rep = outcome.get_result()
+            if out:
+                rep.sections.append(("Captured stdout", out))
+            if err:
+                rep.sections.append(("Captured stderr", err))
+        else:
+            yield
 
-    @pytest.mark.hookwrapper
+    @pytest.hookimpl(hookwrapper=True)
     def pytest_runtest_setup(self, item):
         self.resumecapture()
         yield
         self.suspendcapture_item(item, "setup")
 
-    @pytest.mark.hookwrapper
+    @pytest.hookimpl(hookwrapper=True)
     def pytest_runtest_call(self, item):
         self.resumecapture()
         self.activate_funcargs(item)
@@ -136,60 +133,61 @@ class CaptureManager:
         #self.deactivate_funcargs() called from suspendcapture()
         self.suspendcapture_item(item, "call")
 
-    @pytest.mark.hookwrapper
+    @pytest.hookimpl(hookwrapper=True)
     def pytest_runtest_teardown(self, item):
         self.resumecapture()
         yield
         self.suspendcapture_item(item, "teardown")
 
-    @pytest.mark.tryfirst
+    @pytest.hookimpl(tryfirst=True)
     def pytest_keyboard_interrupt(self, excinfo):
         self.reset_capturings()
 
-    @pytest.mark.tryfirst
+    @pytest.hookimpl(tryfirst=True)
     def pytest_internalerror(self, excinfo):
         self.reset_capturings()
 
-    def suspendcapture_item(self, item, when):
-        out, err = self.suspendcapture()
-        item.add_report_section(when, "out", out)
-        item.add_report_section(when, "err", err)
+    def suspendcapture_item(self, item, when, in_=False):
+        out, err = self.suspendcapture(in_=in_)
+        item.add_report_section(when, "stdout", out)
+        item.add_report_section(when, "stderr", err)
 
 error_capsysfderror = "cannot use capsys and capfd at the same time"
 
 
 @pytest.fixture
 def capsys(request):
-    """enables capturing of writes to sys.stdout/sys.stderr and makes
+    """Enable capturing of writes to sys.stdout/sys.stderr and make
     captured output available via ``capsys.readouterr()`` method calls
     which return a ``(out, err)`` tuple.
     """
-    if "capfd" in request._funcargs:
+    if "capfd" in request.fixturenames:
         raise request.raiseerror(error_capsysfderror)
-    request.node._capfuncarg = c = CaptureFixture(SysCapture)
+    request.node._capfuncarg = c = CaptureFixture(SysCapture, request)
     return c
 
 @pytest.fixture
 def capfd(request):
-    """enables capturing of writes to file descriptors 1 and 2 and makes
+    """Enable capturing of writes to file descriptors 1 and 2 and make
     captured output available via ``capfd.readouterr()`` method calls
     which return a ``(out, err)`` tuple.
     """
-    if "capsys" in request._funcargs:
+    if "capsys" in request.fixturenames:
         request.raiseerror(error_capsysfderror)
     if not hasattr(os, 'dup'):
         pytest.skip("capfd funcarg needs os.dup")
-    request.node._capfuncarg = c = CaptureFixture(FDCapture)
+    request.node._capfuncarg = c = CaptureFixture(FDCapture, request)
     return c
 
 
 class CaptureFixture:
-    def __init__(self, captureclass):
+    def __init__(self, captureclass, request):
         self.captureclass = captureclass
+        self.request = request
 
     def _start(self):
         self._capture = MultiCapture(out=True, err=True, in_=False,
-                                       Capture=self.captureclass)
+                                     Capture=self.captureclass)
         self._capture.start_capturing()
 
     def close(self):
@@ -203,6 +201,15 @@ class CaptureFixture:
             return self._capture.readouterr()
         except AttributeError:
             return self._outerr
+
+    @contextlib.contextmanager
+    def disabled(self):
+        capmanager = self.request.config.pluginmanager.getplugin('capturemanager')
+        capmanager.suspendcapture_item(self.request.node, "call", in_=True)
+        try:
+            yield
+        finally:
+            capmanager.resumecapture()
 
 
 def safe_text_dupfile(f, mode, default_encoding="UTF8"):
@@ -225,6 +232,7 @@ def safe_text_dupfile(f, mode, default_encoding="UTF8"):
 
 
 class EncodedFile(object):
+    errors = "strict"  # possibly needed by py3 code (issue555)
     def __init__(self, buffer, encoding):
         self.buffer = buffer
         self.encoding = encoding
@@ -239,7 +247,7 @@ class EncodedFile(object):
         self.write(data)
 
     def __getattr__(self, name):
-        return getattr(self.buffer, name)
+        return getattr(object.__getattribute__(self, "buffer"), name)
 
 
 class MultiCapture(object):
@@ -429,6 +437,9 @@ class DontReadFromInput:
     because in automated test runs it is better to crash than
     hang indefinitely.
     """
+
+    encoding = None
+
     def read(self, *args):
         raise IOError("reading from stdin while output is captured")
     readline = read
@@ -442,4 +453,38 @@ class DontReadFromInput:
         return False
 
     def close(self):
+        pass
+
+    @property
+    def buffer(self):
+        if sys.version_info >= (3,0):
+            return self
+        else:
+            raise AttributeError('redirected stdin has no attribute buffer')
+
+
+def _readline_workaround():
+    """
+    Ensure readline is imported so that it attaches to the correct stdio
+    handles on Windows.
+
+    Pdb uses readline support where available--when not running from the Python
+    prompt, the readline module is not imported until running the pdb REPL.  If
+    running pytest with the --pdb option this means the readline module is not
+    imported until after I/O capture has been started.
+
+    This is a problem for pyreadline, which is often used to implement readline
+    support on Windows, as it does not attach to the correct handles for stdout
+    and/or stdin if they have been redirected by the FDCapture mechanism.  This
+    workaround ensures that readline is imported before I/O capture is setup so
+    that it can attach to the actual stdin/out for the console.
+
+    See https://github.com/pytest-dev/pytest/pull/1281
+    """
+
+    if not sys.platform.startswith('win32'):
+        return
+    try:
+        import readline  # noqa
+    except ImportError:
         pass

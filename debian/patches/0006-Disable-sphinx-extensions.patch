@@ -1,0 +1,27 @@
+From: =?utf-8?b?T25kxZllaiBOb3bDvQ==?= <onovy@debian.org>
+Date: Sun, 3 Nov 2019 15:47:11 -0800
+Subject: Disable some of Sphinx extensions which we don't have in Debian
+
+Forwarded: not-needed
+---
+ doc/en/conf.py | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/doc/en/conf.py b/doc/en/conf.py
+index ec38935..91dcf94 100644
+--- a/doc/en/conf.py
++++ b/doc/en/conf.py
+@@ -44,13 +44,11 @@ todo_include_todos = 1
+ # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
+ extensions = [
+     "pallets_sphinx_themes",
+-    "pygments_pytest",
+     "sphinx.ext.autodoc",
+     "sphinx.ext.autosummary",
+     "sphinx.ext.intersphinx",
+     "sphinx.ext.todo",
+     "sphinx.ext.viewcode",
+-    "sphinx_removed_in",
+ ]
+ 
+ # Add any paths that contain templates here, relative to this directory.

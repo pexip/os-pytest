@@ -1,2 +1,3 @@
-remove_google_js
-intersphinx.patch
+0002-Use-local-intersphinx-mappings.patch
+0005-Drop-sphinxcontrib_trio-extension.patch
+0006-Disable-sphinx-extensions.patch

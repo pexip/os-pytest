@@ -12,15 +12,15 @@ Full pytest documentation
 
    getting-started
    usage
+   existingtestsuite
    assert
-   builtin
    fixture
+   mark
    monkeypatch
    tmpdir
    capture
-   recwarn
+   warnings
    doctest
-   mark
    skipping
    parametrize
    cache
@@ -29,19 +29,33 @@ Full pytest documentation
    xunit_setup
    plugins
    writing_plugins
+   logging
+   reference
 
-   example/index
    goodpractices
+   flaky
+   pythonpath
    customize
+   example/index
    bash-completion
+   faq
 
    backwards-compatibility
-   license
+   deprecations
+   py27-py34-deprecation
+
    contributing
+   development_guide
+
+   sponsor
+   tidelift
+   license
+   contact
+
+   historical-notes
    talks
    projects
-   faq
-   contact
+
 
 .. only:: html
 
@@ -57,4 +71,3 @@ Full pytest documentation
       :maxdepth: 1
 
       changelog
-

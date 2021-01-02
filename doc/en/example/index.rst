@@ -1,8 +1,8 @@
 
 .. _examples:
 
-Usages and Examples
-===========================================
+Examples and customization tricks
+=================================
 
 Here is a (growing) list of examples. :ref:`Contact <contact>` us if you
 need more examples or have questions. Also take a look at the
@@ -15,7 +15,7 @@ For basic examples, see
 
 - :doc:`../getting-started` for basic introductory examples
 - :ref:`assert` for basic assertion examples
-- :ref:`fixtures` for basic fixture/setup examples
+- :ref:`Fixtures <fixtures>` for basic fixture/setup examples
 - :ref:`parametrize` for basic test function parametrization
 - :doc:`../unittest` for basic unittest integration
 - :doc:`../nose` for basic nosetests integration

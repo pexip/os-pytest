@@ -1,6 +1,6 @@
 #!/bin/sh
 
-cat > "$ADTTMP"/smoketest.py <<EOF
+cat > "$AUTOPKGTEST_TMP"/smoketest.py <<EOF
 def foo():
     return 'yes'
 
@@ -9,8 +9,8 @@ def test_foo():
 
 EOF
 
-cd "$ADTTMP"
+cd "$AUTOPKGTEST_TMP"
 
-for py in $(py3versions -i); do
-    TMPDIR="$ADTTMP" $py -m pytest smoketest.py
+for py in $(py3versions -s); do
+    TMPDIR="$AUTOPKGTEST_TMP" $py -m pytest smoketest.py
 done

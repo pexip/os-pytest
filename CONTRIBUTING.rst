@@ -89,6 +89,38 @@ without using a local copy.  This can be convenient for small fixes.
     The built documentation should be available in ``doc/en/_build/html``,
     where 'en' refers to the documentation language.
 
+Pytest has an API reference which in large part is
+`generated automatically <https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html>`_
+from the docstrings of the documented items. Pytest uses the
+`Sphinx docstring format <https://sphinx-rtd-tutorial.readthedocs.io/en/latest/docstrings.html>`_.
+For example:
+
+.. code-block:: python
+
+    def my_function(arg: ArgType) -> Foo:
+        """Do important stuff.
+
+        More detailed info here, in separate paragraphs from the subject line.
+        Use proper sentences -- start sentences with capital letters and end
+        with periods.
+
+        Can include annotated documentation:
+
+        :param short_arg: An argument which determines stuff.
+        :param long_arg:
+            A long explanation which spans multiple lines, overflows
+            like this.
+        :returns: The result.
+        :raises ValueError:
+            Detailed information when this can happen.
+
+        .. versionadded:: 6.0
+
+        Including types into the annotations above is not necessary when
+        type-hinting is being used (as in this example).
+        """
+
+
 .. _submitplugin:
 
 Submitting Plugins to pytest-dev
@@ -98,8 +130,6 @@ Pytest development of the core, some plugins and support code happens
 in repositories living under the ``pytest-dev`` organisations:
 
 - `pytest-dev on GitHub <https://github.com/pytest-dev>`_
-
-- `pytest-dev on Bitbucket <https://bitbucket.org/pytest-dev>`_
 
 All pytest-dev Contributors team members have write access to all contained
 repositories.  Pytest core and plugins are generally developed
@@ -116,16 +146,17 @@ You can submit your plugin by subscribing to the `pytest-dev mail list
 mail pointing to your existing pytest plugin repository which must have
 the following:
 
-- PyPI presence with a ``setup.py`` that contains a license, ``pytest-``
+- PyPI presence with packaging metadata that contains a ``pytest-``
   prefixed name, version number, authors, short and long description.
 
-- a ``tox.ini`` for running tests using `tox <https://tox.readthedocs.io>`_.
+- a  `tox configuration <https://tox.readthedocs.io/en/latest/config.html#configuration-discovery>`_
+  for running tests using `tox <https://tox.readthedocs.io>`_.
 
-- a ``README.txt`` describing how to use the plugin and on which
+- a ``README`` describing how to use the plugin and on which
   platforms it runs.
 
-- a ``LICENSE.txt`` file or equivalent containing the licensing
-  information, with matching info in ``setup.py``.
+- a ``LICENSE`` file containing the licensing information, with
+  matching info in its packaging metadata.
 
 - an issue tracker for bug reports and enhancement requests.
 
@@ -205,7 +236,7 @@ Here is a simple overview, with pytest-specific bits:
     $ cd pytest
     # now, create your own branch off "master":
 
-        $ git checkout -b your-bugfix-branch-name master
+        $ git checkout -b your-bugfix-branch-name main
 
    Given we have "major.minor.micro" version numbers, bug fixes will usually
    be released in micro releases whereas features will be released in
@@ -268,12 +299,6 @@ Here is a simple overview, with pytest-specific bits:
 
        $ pytest testing/test_config.py
 
-
-#. Commit and push once your tests pass and you are happy with your change(s)::
-
-    $ git commit -a -m "<commit message>"
-    $ git push -u
-
 #. Create a new changelog entry in ``changelog``. The file should be named ``<issueid>.<type>.rst``,
    where *issueid* is the number of the issue related to the change and *type* is one of
    ``feature``, ``improvement``, ``bugfix``, ``doc``, ``deprecation``, ``breaking``, ``vendor``
@@ -282,13 +307,18 @@ Here is a simple overview, with pytest-specific bits:
 
 #. Add yourself to ``AUTHORS`` file if not there yet, in alphabetical order.
 
+#. Commit and push once your tests pass and you are happy with your change(s)::
+
+    $ git commit -a -m "<commit message>"
+    $ git push -u
+
 #. Finally, submit a pull request through the GitHub website using this data::
 
     head-fork: YOUR_GITHUB_USERNAME/pytest
     compare: your-branch-name
 
     base-fork: pytest-dev/pytest
-    base: master
+    base: main
 
 
 Writing Tests
@@ -374,6 +404,27 @@ actual latest release). The procedure for this is:
    * Prefix the message with ``[1.2.x]``.
    * Delete the PR body, it usually contains a duplicate commit message.
 
+
+Who does the backporting
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+As mentioned above, bugs should first be fixed on ``master`` (except in rare occasions
+that a bug only happens in a previous release). So who should do the backport procedure described
+above?
+
+1. If the bug was fixed by a core developer, it is the main responsibility of that core developer
+   to do the backport.
+2. However, often the merge is done by another maintainer, in which case it is nice of them to
+   do the backport procedure if they have the time.
+3. For bugs submitted by non-maintainers, it is expected that a core developer will to do
+   the backport, normally the one that merged the PR on ``master``.
+4. If a non-maintainers notices a bug which is fixed on ``master`` but has not been backported
+   (due to maintainers forgetting to apply the *needs backport* label, or just plain missing it),
+   they are also welcome to open a PR with the backport. The procedure is simple and really
+   helps with the maintenance of the project.
+
+All the above are not rules, but merely some guidelines/suggestions on what we should expect
+about backports.
 
 Handling stale issues/PRs
 -------------------------

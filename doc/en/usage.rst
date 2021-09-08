@@ -33,7 +33,7 @@ Running ``pytest`` can result in six different exit codes:
 :Exit code 4: pytest command line usage error
 :Exit code 5: No tests were collected
 
-They are represented by the :class:`_pytest.config.ExitCode` enum. The exit codes being a part of the public API can be imported and accessed directly using:
+They are represented by the :class:`pytest.ExitCode` enum. The exit codes being a part of the public API can be imported and accessed directly using:
 
 .. code-block:: python
 
@@ -56,6 +56,8 @@ Getting help on version, option names, environment variables
     pytest --fixtures  # show available builtin function arguments
     pytest -h | --help # show help on command line and config file options
 
+
+The full command-line flags can be found in the :ref:`reference <command-line-flags>`.
 
 .. _maxfail:
 
@@ -216,7 +218,7 @@ Example:
 
     $ pytest -ra
     =========================== test session starts ============================
-    platform linux -- Python 3.x.y, pytest-6.x.y, py-1.x.y, pluggy-0.x.y
+    platform linux -- Python 3.x.y, pytest-6.x.y, py-1.x.y, pluggy-1.x.y
     cachedir: $PYTHON_PREFIX/.pytest_cache
     rootdir: $REGENDOC_TMPDIR
     collected 6 items
@@ -274,7 +276,7 @@ More than one character can be used, so for example to only see failed and skipp
 
     $ pytest -rfs
     =========================== test session starts ============================
-    platform linux -- Python 3.x.y, pytest-6.x.y, py-1.x.y, pluggy-0.x.y
+    platform linux -- Python 3.x.y, pytest-6.x.y, py-1.x.y, pluggy-1.x.y
     cachedir: $PYTHON_PREFIX/.pytest_cache
     rootdir: $REGENDOC_TMPDIR
     collected 6 items
@@ -310,7 +312,7 @@ captured output:
 
     $ pytest -rpP
     =========================== test session starts ============================
-    platform linux -- Python 3.x.y, pytest-6.x.y, py-1.x.y, pluggy-0.x.y
+    platform linux -- Python 3.x.y, pytest-6.x.y, py-1.x.y, pluggy-1.x.y
     cachedir: $PYTHON_PREFIX/.pytest_cache
     rootdir: $REGENDOC_TMPDIR
     collected 6 items
@@ -426,14 +428,15 @@ Pytest supports the use of ``breakpoint()`` with the following behaviours:
 Profiling test execution duration
 -------------------------------------
 
+.. versionchanged:: 6.0
 
-To get a list of the slowest 10 test durations:
+To get a list of the slowest 10 test durations over 1.0s long:
 
 .. code-block:: bash
 
-    pytest --durations=10
+    pytest --durations=10 --durations-min=1.0
 
-By default, pytest will not show test durations that are too small (<0.01s) unless ``-vv`` is passed on the command-line.
+By default, pytest will not show test durations that are too small (<0.005s) unless ``-vv`` is passed on the command-line.
 
 
 .. _faulthandler:
@@ -465,6 +468,38 @@ seconds to finish (not available on Windows).
     * The ``--faulthandler-timeout`` command-line option has become the
       :confval:`faulthandler_timeout` configuration option. It can still be configured from
       the command-line using ``-o faulthandler_timeout=X``.
+
+
+.. _unraisable:
+
+Warning about unraisable exceptions and unhandled thread exceptions
+-------------------------------------------------------------------
+
+.. versionadded:: 6.2
+
+.. note::
+
+    These features only work on Python>=3.8.
+
+Unhandled exceptions are exceptions that are raised in a situation in which
+they cannot propagate to a caller. The most common case is an exception raised
+in a :meth:`__del__ <object.__del__>` implementation.
+
+Unhandled thread exceptions are exceptions raised in a :class:`~threading.Thread`
+but not handled, causing the thread to terminate uncleanly.
+
+Both types of exceptions are normally considered bugs, but may go unnoticed
+because they don't cause the program itself to crash. Pytest detects these
+conditions and issues a warning that is visible in the test run summary.
+
+The plugins are automatically enabled for pytest runs, unless the
+``-p no:unraisableexception`` (for unraisable exceptions) and
+``-p no:threadexception`` (for thread exceptions) options are given on the
+command-line.
+
+The warnings may be silenced selectivly using the :ref:`pytest.mark.filterwarnings ref`
+mark. The warning categories are :class:`pytest.PytestUnraisableExceptionWarning` and
+:class:`pytest.PytestUnhandledThreadExceptionWarning`.
 
 
 Creating JUnitXML format files

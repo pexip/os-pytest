@@ -50,9 +50,7 @@ def subst_path_linux(filename):
 
 
 def test_link_resolve(testdir: pytester.Testdir) -> None:
-    """
-    See: https://github.com/pytest-dev/pytest/issues/5965
-    """
+    """See: https://github.com/pytest-dev/pytest/issues/5965."""
     sub1 = testdir.mkpydir("sub1")
     p = sub1.join("test_foo.py")
     p.write(
@@ -79,7 +77,5 @@ def test_link_resolve(testdir: pytester.Testdir) -> None:
 
         # i.e.: Expect drive on windows because we just have drive:filename, whereas
         # we expect a relative path on Linux.
-        expect = (
-            "*{}*".format(subst_p) if sys.platform == "win32" else "*sub2/test_foo.py*"
-        )
+        expect = f"*{subst_p}*" if sys.platform == "win32" else "*sub2/test_foo.py*"
         result.stdout.fnmatch_lines([expect])

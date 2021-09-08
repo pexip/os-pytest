@@ -1,10 +1,18 @@
 :orphan:
 
+.. sidebar:: Next Open Trainings
+
+   - `pytest: Professionelles Testen (nicht nur) für Python <https://workshoptage.ch/workshops/2021/pytest-test-driven-development-nicht-nur-fuer-python-2/>`_ (German), part of `CH-Open Workshoptage <https://workshoptage.ch/>`_, September 9th, ETH Zurich, Switzerland.
+   - `Professional Testing with Python <https://www.python-academy.com/courses/specialtopics/python_course_testing.html>`_, via `Python Academy <https://www.python-academy.com/>`_, February 1st to 3rd, 2022, Leipzig (Germany) and remote.
+
+   Also see `previous talks and blogposts <talks.html>`_.
+
 .. _features:
 
 pytest: helps you write better programs
 =======================================
 
+.. module:: pytest
 
 The ``pytest`` framework makes it easy to write small tests, yet
 scales to support complex functional testing for applications and libraries.
@@ -28,7 +36,7 @@ To execute it:
 
     $ pytest
     =========================== test session starts ============================
-    platform linux -- Python 3.x.y, pytest-6.x.y, py-1.x.y, pluggy-0.x.y
+    platform linux -- Python 3.x.y, pytest-6.x.y, py-1.x.y, pluggy-1.x.y
     cachedir: $PYTHON_PREFIX/.pytest_cache
     rootdir: $REGENDOC_TMPDIR
     collected 1 item
@@ -55,17 +63,17 @@ See :ref:`Getting Started <getstarted>` for more examples.
 Features
 --------
 
-- Detailed info on failing :ref:`assert statements <assert>` (no need to remember ``self.assert*`` names);
+- Detailed info on failing :ref:`assert statements <assert>` (no need to remember ``self.assert*`` names)
 
-- :ref:`Auto-discovery <test discovery>` of test modules and functions;
+- :ref:`Auto-discovery <test discovery>` of test modules and functions
 
-- :ref:`Modular fixtures <fixture>` for managing small or parametrized long-lived test resources;
+- :ref:`Modular fixtures <fixture>` for managing small or parametrized long-lived test resources
 
-- Can run :ref:`unittest <unittest>` (including trial) and :ref:`nose <noseintegration>` test suites out of the box;
+- Can run :ref:`unittest <unittest>` (including trial) and :ref:`nose <noseintegration>` test suites out of the box
 
-- Python 3.5+ and PyPy 3;
+- Python 3.6+ and PyPy 3
 
-- Rich plugin architecture, with over 315+ `external plugins <http://plugincompat.herokuapp.com>`_ and thriving community;
+- Rich plugin architecture, with over 315+ `external plugins <https://docs.pytest.org/en/latest/reference/plugin_list.html>`_ and thriving community
 
 
 Documentation
@@ -122,8 +130,8 @@ Tidelift will coordinate the fix and disclosure.
 License
 -------
 
-Copyright Holger Krekel and others, 2004-2020.
+Copyright Holger Krekel and others, 2004-2021.
 
 Distributed under the terms of the `MIT`_ license, pytest is free and open source software.
 
-.. _`MIT`: https://github.com/pytest-dev/pytest/blob/master/LICENSE
+.. _`MIT`: https://github.com/pytest-dev/pytest/blob/main/LICENSE

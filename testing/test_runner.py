@@ -5,6 +5,7 @@ import types
 from typing import Dict
 from typing import List
 from typing import Tuple
+from typing import Type
 
 import py
 
@@ -13,12 +14,8 @@ import pytest
 from _pytest import outcomes
 from _pytest import reports
 from _pytest import runner
-from _pytest.compat import TYPE_CHECKING
 from _pytest.config import ExitCode
 from _pytest.outcomes import OutcomeException
-
-if TYPE_CHECKING:
-    from typing import Type
 
 
 class TestSetupState:
@@ -310,7 +307,7 @@ class BaseFunctionalTests:
         assert reps[5].failed
 
     def test_exact_teardown_issue1206(self, testdir) -> None:
-        """issue shadowing error with wrong number of arguments on teardown_method."""
+        """Issue shadowing error with wrong number of arguments on teardown_method."""
         rec = testdir.inline_runsource(
             """
             import pytest
@@ -339,10 +336,9 @@ class BaseFunctionalTests:
         assert reps[2].failed
         assert reps[2].when == "teardown"
         assert reps[2].longrepr.reprcrash.message in (
-            # python3 error
             "TypeError: teardown_method() missing 2 required positional arguments: 'y' and 'z'",
-            # python2 error
-            "TypeError: teardown_method() takes exactly 4 arguments (2 given)",
+            # Python >= 3.10
+            "TypeError: TestClass.teardown_method() missing 2 required positional arguments: 'y' and 'z'",
         )
 
     def test_failure_in_setup_function_ignores_custom_repr(self, testdir) -> None:
@@ -447,19 +443,19 @@ class TestSessionReports:
         assert res[1].name == "TestClass"
 
 
-reporttypes = [
+reporttypes: List[Type[reports.BaseReport]] = [
     reports.BaseReport,
     reports.TestReport,
     reports.CollectReport,
-]  # type: List[Type[reports.BaseReport]]
+]
 
 
 @pytest.mark.parametrize(
     "reporttype", reporttypes, ids=[x.__name__ for x in reporttypes]
 )
-def test_report_extra_parameters(reporttype: "Type[reports.BaseReport]") -> None:
+def test_report_extra_parameters(reporttype: Type[reports.BaseReport]) -> None:
     args = list(inspect.signature(reporttype.__init__).parameters.keys())[1:]
-    basekw = dict.fromkeys(args, [])  # type: Dict[str, List[object]]
+    basekw: Dict[str, List[object]] = dict.fromkeys(args, [])
     report = reporttype(newthing=1, **basekw)
     assert report.newthing == 1
 
@@ -475,7 +471,7 @@ def test_callinfo() -> None:
     ci2 = runner.CallInfo.from_call(lambda: 0 / 0, "collect")
     assert ci2.when == "collect"
     assert not hasattr(ci2, "result")
-    assert repr(ci2) == "<CallInfo when='collect' excinfo={!r}>".format(ci2.excinfo)
+    assert repr(ci2) == f"<CallInfo when='collect' excinfo={ci2.excinfo!r}>"
     assert str(ci2) == repr(ci2)
     assert ci2.excinfo
 
@@ -484,7 +480,7 @@ def test_callinfo() -> None:
         assert 0, "assert_msg"
 
     ci3 = runner.CallInfo.from_call(raise_assertion, "call")
-    assert repr(ci3) == "<CallInfo when='call' excinfo={!r}>".format(ci3.excinfo)
+    assert repr(ci3) == f"<CallInfo when='call' excinfo={ci3.excinfo!r}>"
     assert "\n" not in repr(ci3)
 
 
@@ -742,7 +738,7 @@ def test_importorskip_dev_module(monkeypatch) -> None:
 
 
 def test_importorskip_module_level(testdir) -> None:
-    """importorskip must be able to skip entire modules when used at module level"""
+    """`importorskip` must be able to skip entire modules when used at module level."""
     testdir.makepyfile(
         """
         import pytest
@@ -757,7 +753,7 @@ def test_importorskip_module_level(testdir) -> None:
 
 
 def test_importorskip_custom_reason(testdir) -> None:
-    """make sure custom reasons are used"""
+    """Make sure custom reasons are used."""
     testdir.makepyfile(
         """
         import pytest
@@ -871,9 +867,8 @@ def test_makereport_getsource_dynamic_code(testdir, monkeypatch) -> None:
 
 
 def test_store_except_info_on_error() -> None:
-    """ Test that upon test failure, the exception info is stored on
-    sys.last_traceback and friends.
-    """
+    """Test that upon test failure, the exception info is stored on
+    sys.last_traceback and friends."""
     # Simulate item that might raise a specific exception, depending on `raise_error` class var
     class ItemMightRaise:
         nodeid = "item_that_raises"
@@ -902,7 +897,7 @@ def test_store_except_info_on_error() -> None:
 
 
 def test_current_test_env_var(testdir, monkeypatch) -> None:
-    pytest_current_test_vars = []  # type: List[Tuple[str, str]]
+    pytest_current_test_vars: List[Tuple[str, str]] = []
     monkeypatch.setattr(
         sys, "pytest_current_test_vars", pytest_current_test_vars, raising=False
     )
@@ -934,9 +929,7 @@ def test_current_test_env_var(testdir, monkeypatch) -> None:
 
 
 class TestReportContents:
-    """
-    Test user-level API of ``TestReport`` objects.
-    """
+    """Test user-level API of ``TestReport`` objects."""
 
     def getrunner(self):
         return lambda item: runner.runtestprotocol(item, log=False)

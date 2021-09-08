@@ -4,16 +4,13 @@ import sys
 import textwrap
 from typing import Dict
 from typing import Generator
+from typing import Type
 
 import py
 
 import pytest
-from _pytest.compat import TYPE_CHECKING
 from _pytest.monkeypatch import MonkeyPatch
 from _pytest.pytester import Testdir
-
-if TYPE_CHECKING:
-    from typing import Type
 
 
 @pytest.fixture
@@ -133,7 +130,7 @@ def test_setitem() -> None:
 
 
 def test_setitem_deleted_meanwhile() -> None:
-    d = {}  # type: Dict[str, object]
+    d: Dict[str, object] = {}
     monkeypatch = MonkeyPatch()
     monkeypatch.setitem(d, "x", 2)
     del d["x"]
@@ -158,7 +155,7 @@ def test_setenv_deleted_meanwhile(before: bool) -> None:
 
 
 def test_delitem() -> None:
-    d = {"x": 1}  # type: Dict[str, object]
+    d: Dict[str, object] = {"x": 1}
     monkeypatch = MonkeyPatch()
     monkeypatch.delitem(d, "x")
     assert "x" not in d
@@ -354,13 +351,13 @@ class SampleInherit(Sample):
 @pytest.mark.parametrize(
     "Sample", [Sample, SampleInherit], ids=["new", "new-inherit"],
 )
-def test_issue156_undo_staticmethod(Sample: "Type[Sample]") -> None:
+def test_issue156_undo_staticmethod(Sample: Type[Sample]) -> None:
     monkeypatch = MonkeyPatch()
 
     monkeypatch.setattr(Sample, "hello", None)
     assert Sample.hello is None
 
-    monkeypatch.undo()
+    monkeypatch.undo()  # type: ignore[unreachable]
     assert Sample.hello()
 
 
@@ -410,6 +407,16 @@ def test_context() -> None:
         m.setattr(functools, "partial", 3)
         assert not inspect.isclass(functools.partial)
     assert inspect.isclass(functools.partial)
+
+
+def test_context_classmethod() -> None:
+    class A:
+        x = 1
+
+    with MonkeyPatch.context() as m:
+        m.setattr(A, "x", 2)
+        assert A.x == 2
+    assert A.x == 1
 
 
 def test_syspath_prepend_with_namespace_packages(

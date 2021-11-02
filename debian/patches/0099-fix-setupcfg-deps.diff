@@ -1,0 +1,14 @@
+Fix setup.cfg deps
+--- a/setup.cfg
++++ b/setup.cfg
+@@ -55,8 +55,8 @@
+ package_dir = 
+ 	=src
+ setup_requires = 
+-	setuptools>=42.0
+-	setuptools-scm>=3.4
++	setuptools>=40.0
++	setuptools-scm
+ zip_safe = no
+ 
+ [options.entry_points]

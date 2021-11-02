@@ -28,7 +28,7 @@ Running pytest now produces this output:
 
     $ pytest test_show_warnings.py
     =========================== test session starts ============================
-    platform linux -- Python 3.x.y, pytest-6.x.y, py-1.x.y, pluggy-0.x.y
+    platform linux -- Python 3.x.y, pytest-6.x.y, py-1.x.y, pluggy-1.x.y
     cachedir: $PYTHON_PREFIX/.pytest_cache
     rootdir: $REGENDOC_TMPDIR
     collected 1 item
@@ -68,16 +68,30 @@ them into errors:
     FAILED test_show_warnings.py::test_one - UserWarning: api v1, should use ...
     1 failed in 0.12s
 
-The same option can be set in the ``pytest.ini`` file using the ``filterwarnings`` ini option.
-For example, the configuration below will ignore all user warnings, but will transform
+The same option can be set in the ``pytest.ini`` or ``pyproject.toml`` file using the
+``filterwarnings`` ini option. For example, the configuration below will ignore all
+user warnings and specific deprecation warnings matching a regex, but will transform
 all other warnings into errors.
 
 .. code-block:: ini
 
+    # pytest.ini
     [pytest]
     filterwarnings =
         error
         ignore::UserWarning
+        ignore:function ham\(\) is deprecated:DeprecationWarning
+
+.. code-block:: toml
+
+    # pyproject.toml
+    [tool.pytest.ini_options]
+    filterwarnings = [
+        "error",
+        "ignore::UserWarning",
+        # note the use of single quote below to denote "raw" strings in TOML
+        'ignore:function ham\(\) is deprecated:DeprecationWarning',
+    ]
 
 
 When a warning matches more than one option in the list, the action for the last matching option
@@ -159,8 +173,6 @@ DeprecationWarning and PendingDeprecationWarning
 ------------------------------------------------
 
 
-
-
 By default pytest will display ``DeprecationWarning`` and ``PendingDeprecationWarning`` warnings from
 user code and third-party libraries, as recommended by `PEP-0565 <https://www.python.org/dev/peps/pep-0565>`_.
 This helps users keep their code modern and avoid breakages when deprecated warnings are effectively removed.
@@ -216,27 +228,8 @@ that a certain function call triggers a ``DeprecationWarning`` or
 This test will fail if ``myfunction`` does not issue a deprecation warning
 when called with a ``17`` argument.
 
-By default, ``DeprecationWarning`` and ``PendingDeprecationWarning`` will not be
-caught when using :func:`pytest.warns` or :ref:`recwarn <recwarn>` because
-the default Python warnings filters hide
-them. If you wish to record them in your own code, use
-``warnings.simplefilter('always')``:
-
-.. code-block:: python
-
-    import warnings
-    import pytest
 
 
-    def test_deprecation(recwarn):
-        warnings.simplefilter("always")
-        myfunction(17)
-        assert len(recwarn) == 1
-        assert recwarn.pop(DeprecationWarning)
-
-
-The :ref:`recwarn <recwarn>` fixture automatically ensures to reset the warnings
-filter at the end of the test, so no global state is leaked.
 
 .. _`asserting warnings`:
 
@@ -251,7 +244,7 @@ Asserting warnings with the warns function
 
 
 
-You can check that code raises a particular warning using ``pytest.warns``,
+You can check that code raises a particular warning using func:`pytest.warns`,
 which works in a similar manner to :ref:`raises <assertraises>`:
 
 .. code-block:: python
@@ -279,7 +272,7 @@ argument ``match`` to assert that the exception matches a text or regex::
       ...
     Failed: DID NOT WARN. No warnings of type ...UserWarning... was emitted...
 
-You can also call ``pytest.warns`` on a function or code string:
+You can also call func:`pytest.warns` on a function or code string:
 
 .. code-block:: python
 
@@ -303,9 +296,9 @@ additional information:
 Alternatively, you can examine raised warnings in detail using the
 :ref:`recwarn <recwarn>` fixture (see below).
 
-.. note::
-    ``DeprecationWarning`` and ``PendingDeprecationWarning`` are treated
-    differently; see :ref:`ensuring_function_triggers`.
+
+The :ref:`recwarn <recwarn>` fixture automatically ensures to reset the warnings
+filter at the end of the test, so no global state is leaked.
 
 .. _`recording warnings`:
 
@@ -314,10 +307,10 @@ Alternatively, you can examine raised warnings in detail using the
 Recording warnings
 ------------------
 
-You can record raised warnings either using ``pytest.warns`` or with
+You can record raised warnings either using func:`pytest.warns` or with
 the ``recwarn`` fixture.
 
-To record with ``pytest.warns`` without asserting anything about the warnings,
+To record with func:`pytest.warns` without asserting anything about the warnings,
 pass ``None`` as the expected warning type:
 
 .. code-block:: python
@@ -346,14 +339,14 @@ The ``recwarn`` fixture will record warnings for the whole function:
         assert w.filename
         assert w.lineno
 
-Both ``recwarn`` and ``pytest.warns`` return the same interface for recorded
+Both ``recwarn`` and func:`pytest.warns` return the same interface for recorded
 warnings: a WarningsRecorder instance. To view the recorded warnings, you can
 iterate over this instance, call ``len`` on it to get the number of recorded
 warnings, or index into it to get a particular recorded warning.
 
 .. currentmodule:: _pytest.warnings
 
-Full API: :class:`WarningsRecorder`.
+Full API: :class:`~_pytest.recwarn.WarningsRecorder`.
 
 .. _custom_failure_messages:
 
@@ -373,7 +366,7 @@ are met.
                 pytest.fail("Expected a warning!")
 
 If no warnings are issued when calling ``f``, then ``not record`` will
-evaluate to ``True``.  You can then call ``pytest.fail`` with a
+evaluate to ``True``.  You can then call :func:`pytest.fail` with a
 custom error message.
 
 .. _internal-warnings:

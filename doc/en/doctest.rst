@@ -2,7 +2,7 @@
 Doctest integration for modules and test files
 =========================================================
 
-By default all files matching the ``test*.txt`` pattern will
+By default, all files matching the ``test*.txt`` pattern will
 be run through the python standard ``doctest`` module.  You
 can change the pattern by issuing:
 
@@ -29,7 +29,7 @@ then you can just invoke ``pytest`` directly:
 
     $ pytest
     =========================== test session starts ============================
-    platform linux -- Python 3.x.y, pytest-6.x.y, py-1.x.y, pluggy-0.x.y
+    platform linux -- Python 3.x.y, pytest-6.x.y, py-1.x.y, pluggy-1.x.y
     cachedir: $PYTHON_PREFIX/.pytest_cache
     rootdir: $REGENDOC_TMPDIR
     collected 1 item
@@ -58,7 +58,7 @@ and functions, including from test modules:
 
     $ pytest --doctest-modules
     =========================== test session starts ============================
-    platform linux -- Python 3.x.y, pytest-6.x.y, py-1.x.y, pluggy-0.x.y
+    platform linux -- Python 3.x.y, pytest-6.x.y, py-1.x.y, pluggy-1.x.y
     cachedir: $PYTHON_PREFIX/.pytest_cache
     rootdir: $REGENDOC_TMPDIR
     collected 2 items
@@ -76,15 +76,6 @@ putting them into a pytest.ini file like this:
     # content of pytest.ini
     [pytest]
     addopts = --doctest-modules
-
-.. note::
-
-    The builtin pytest doctest supports only ``doctest`` blocks, but if you are looking
-    for more advanced checking over *all* your documentation,
-    including doctests, ``.. codeblock:: python`` Sphinx directive support,
-    and any other examples your documentation may include, you may wish to
-    consider `Sybil <https://sybil.readthedocs.io/en/latest/index.html>`__.
-    It provides pytest integration out of the box.
 
 
 Encoding
@@ -113,7 +104,7 @@ lengthy exception stack traces you can just write:
 .. code-block:: ini
 
     [pytest]
-    doctest_optionflags= NORMALIZE_WHITESPACE IGNORE_EXCEPTION_DETAIL
+    doctest_optionflags = NORMALIZE_WHITESPACE IGNORE_EXCEPTION_DETAIL
 
 Alternatively, options can be enabled by an inline comment in the doc test
 itself:
@@ -206,7 +197,7 @@ It is possible to use fixtures using the ``getfixture`` helper:
     >>> ...
     >>>
 
-Note that the fixture needs to be defined in a place visible by pytest, for example a `conftest.py`
+Note that the fixture needs to be defined in a place visible by pytest, for example, a `conftest.py`
 file or plugin; normal python files containing docstrings are not normally scanned for fixtures
 unless explicitly configured by :confval:`python_files`.
 
@@ -253,12 +244,32 @@ Note that like the normal ``conftest.py``, the fixtures are discovered in the di
 Meaning that if you put your doctest with your source code, the relevant conftest.py needs to be in the same directory tree.
 Fixtures will not be discovered in a sibling directory tree!
 
-Skipping tests dynamically
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+Skipping tests
+^^^^^^^^^^^^^^
 
-.. versionadded:: 4.4
+For the same reasons one might want to skip normal tests, it is also possible to skip
+tests inside doctests.
 
-You can use ``pytest.skip`` to dynamically skip doctests. For example:
+To skip a single check inside a doctest you can use the standard
+`doctest.SKIP <https://docs.python.org/3/library/doctest.html#doctest.SKIP>`__ directive:
+
+.. code-block:: python
+
+    def test_random(y):
+        """
+        >>> random.random()  # doctest: +SKIP
+        0.156231223
+
+        >>> 1 + 1
+        2
+        """
+
+This will skip the first check, but not the second.
+
+pytest also allows using the standard pytest functions :func:`pytest.skip` and
+:func:`pytest.xfail` inside doctests, which might be useful because you can
+then skip/xfail tests based on external conditions:
+
 
 .. code-block:: text
 
@@ -266,3 +277,35 @@ You can use ``pytest.skip`` to dynamically skip doctests. For example:
     >>> if sys.platform.startswith('win'):
     ...     pytest.skip('this doctest does not work on Windows')
     ...
+    >>> import fcntl
+    >>> ...
+
+However using those functions is discouraged because it reduces the readability of the
+docstring.
+
+.. note::
+
+    :func:`pytest.skip` and :func:`pytest.xfail` behave differently depending
+    if the doctests are in a Python file (in docstrings) or a text file containing
+    doctests intermingled with text:
+
+    * Python modules (docstrings): the functions only act in that specific docstring,
+      letting the other docstrings in the same module execute as normal.
+
+    * Text files: the functions will skip/xfail the checks for the rest of the entire
+      file.
+
+
+Alternatives
+------------
+
+While the built-in pytest support provides a good set of functionalities for using
+doctests, if you use them extensively you might be interested in those external packages
+which add many more features, and include pytest integration:
+
+* `pytest-doctestplus <https://github.com/astropy/pytest-doctestplus>`__: provides
+  advanced doctest support and enables the testing of reStructuredText (".rst") files.
+
+* `Sybil <https://sybil.readthedocs.io>`__: provides a way to test examples in
+  your documentation by parsing them from the documentation source and evaluating
+  the parsed examples as part of your normal test run.

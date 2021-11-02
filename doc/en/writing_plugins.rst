@@ -33,26 +33,34 @@ Plugin discovery order at tool startup
 
 ``pytest`` loads plugin modules at tool startup in the following way:
 
-* by loading all builtin plugins
+1. by scanning the command line for the ``-p no:name`` option
+   and *blocking* that plugin from being loaded (even builtin plugins can
+   be blocked this way). This happens before normal command-line parsing.
 
-* by loading all plugins registered through `setuptools entry points`_.
+2. by loading all builtin plugins.
 
-* by pre-scanning the command line for the ``-p name`` option
-  and loading the specified plugin before actual command line parsing.
+3. by scanning the command line for the ``-p name`` option
+   and loading the specified plugin. This happens before normal command-line parsing.
 
-* by loading all :file:`conftest.py` files as inferred by the command line
-  invocation:
+4. by loading all plugins registered through `setuptools entry points`_.
 
-  - if no test paths are specified use current dir as a test path
-  - if exists, load ``conftest.py`` and ``test*/conftest.py`` relative
-    to the directory part of the first test path.
+5. by loading all plugins specified through the :envvar:`PYTEST_PLUGINS` environment variable.
 
-  Note that pytest does not find ``conftest.py`` files in deeper nested
-  sub directories at tool startup.  It is usually a good idea to keep
-  your ``conftest.py`` file in the top level test or project root directory.
+6. by loading all :file:`conftest.py` files as inferred by the command line
+   invocation:
 
-* by recursively loading all plugins specified by the
-  :globalvar:`pytest_plugins` variable in ``conftest.py`` files
+   - if no test paths are specified, use the current dir as a test path
+   - if exists, load ``conftest.py`` and ``test*/conftest.py`` relative
+     to the directory part of the first test path. After the ``conftest.py``
+     file is loaded, load all plugins specified in its
+     :globalvar:`pytest_plugins` variable if present.
+
+   Note that pytest does not find ``conftest.py`` files in deeper nested
+   sub directories at tool startup.  It is usually a good idea to keep
+   your ``conftest.py`` file in the top level test or project root directory.
+
+7. by recursively loading all plugins specified by the
+   :globalvar:`pytest_plugins` variable in ``conftest.py`` files.
 
 
 .. _`pytest/plugin`: http://bitbucket.org/pytest-dev/pytest/src/tip/pytest/plugin/
@@ -99,6 +107,10 @@ Here is how you might run it::
 
     See also: :ref:`pythonpath`.
 
+.. note::
+    Some hooks should be implemented only in plugins or conftest.py files situated at the
+    tests root directory due to how pytest discovers plugins during startup,
+    see the documentation of each hook for details.
 
 Writing your own plugin
 -----------------------
@@ -404,7 +416,7 @@ return a result object, with which we can assert the tests' outcomes.
         result.assert_outcomes(passed=4)
 
 
-additionally it is possible to copy examples for an example folder before running pytest on it
+Additionally it is possible to copy examples for an example folder before running pytest on it.
 
 .. code-block:: ini
 
@@ -430,20 +442,14 @@ additionally it is possible to copy examples for an example folder before runnin
 
     $ pytest
     =========================== test session starts ============================
-    platform linux -- Python 3.x.y, pytest-6.x.y, py-1.x.y, pluggy-0.x.y
+    platform linux -- Python 3.x.y, pytest-6.x.y, py-1.x.y, pluggy-1.x.y
     cachedir: $PYTHON_PREFIX/.pytest_cache
     rootdir: $REGENDOC_TMPDIR, configfile: pytest.ini
     collected 2 items
 
     test_example.py ..                                                   [100%]
 
-    ============================= warnings summary =============================
-    test_example.py::test_plugin
-      $REGENDOC_TMPDIR/test_example.py:4: PytestExperimentalApiWarning: testdir.copy_example is an experimental api that may change over time
-        testdir.copy_example("test_example.py")
-
-    -- Docs: https://docs.pytest.org/en/stable/warnings.html
-    ======================= 2 passed, 1 warning in 0.12s =======================
+    ============================ 2 passed in 0.12s =============================
 
 For more information about the result object that ``runpytest()`` returns, and
 the methods that it provides please check out the :py:class:`RunResult
@@ -614,6 +620,11 @@ among each other.
 Declaring new hooks
 ------------------------
 
+.. note::
+
+    This is a quick overview on how to add new hooks and how they work in general, but a more complete
+    overview can be found in `the pluggy documentation <https://pluggy.readthedocs.io/en/latest/>`__.
+
 .. currentmodule:: _pytest.hookspec
 
 Plugins and ``conftest.py`` files may declare new hooks that can then be
@@ -627,7 +638,7 @@ Hooks are usually declared as do-nothing functions that contain only
 documentation describing when the hook will be called and what return values
 are expected. The names of the functions must start with `pytest_` otherwise pytest won't recognize them.
 
-Here's an example. Let's assume this code is in the ``hooks.py`` module.
+Here's an example. Let's assume this code is in the ``sample_hook.py`` module.
 
 .. code-block:: python
 
@@ -643,10 +654,10 @@ class or module can then be passed to the ``pluginmanager`` using the ``pytest_a
 .. code-block:: python
 
     def pytest_addhooks(pluginmanager):
-        """ This example assumes the hooks are grouped in the 'hooks' module. """
-        from my_app.tests import hooks
+        """ This example assumes the hooks are grouped in the 'sample_hook' module. """
+        from my_app.tests import sample_hook
 
-        pluginmanager.add_hookspecs(hooks)
+        pluginmanager.add_hookspecs(sample_hook)
 
 For a real world example, see `newhooks.py`_ from `xdist <https://github.com/pytest-dev/pytest-xdist>`_.
 

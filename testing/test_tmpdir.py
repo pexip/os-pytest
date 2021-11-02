@@ -1,29 +1,32 @@
 import os
 import stat
 import sys
+from pathlib import Path
 from typing import Callable
+from typing import cast
 from typing import List
 
 import attr
 
 import pytest
 from _pytest import pathlib
+from _pytest.config import Config
 from _pytest.pathlib import cleanup_numbered_dir
 from _pytest.pathlib import create_cleanup_lock
 from _pytest.pathlib import make_numbered_dir
 from _pytest.pathlib import maybe_delete_a_numbered_dir
 from _pytest.pathlib import on_rm_rf_error
-from _pytest.pathlib import Path
 from _pytest.pathlib import register_cleanup_lock_removal
 from _pytest.pathlib import rm_rf
+from _pytest.pytester import Pytester
 from _pytest.tmpdir import get_user
 from _pytest.tmpdir import TempdirFactory
 from _pytest.tmpdir import TempPathFactory
 
 
-def test_tmpdir_fixture(testdir):
-    p = testdir.copy_example("tmpdir/tmpdir_fixture.py")
-    results = testdir.runpytest(p)
+def test_tmpdir_fixture(pytester: Pytester) -> None:
+    p = pytester.copy_example("tmpdir/tmpdir_fixture.py")
+    results = pytester.runpytest(p)
     results.stdout.fnmatch_lines(["*1 passed*"])
 
 
@@ -45,8 +48,10 @@ class FakeConfig:
 
 class TestTempdirHandler:
     def test_mktemp(self, tmp_path):
-        config = FakeConfig(tmp_path)
-        t = TempdirFactory(TempPathFactory.from_config(config))
+        config = cast(Config, FakeConfig(tmp_path))
+        t = TempdirFactory(
+            TempPathFactory.from_config(config, _ispytest=True), _ispytest=True
+        )
         tmp = t.mktemp("world")
         assert tmp.relto(t.getbasetemp()) == "world0"
         tmp = t.mktemp("this")
@@ -58,27 +63,27 @@ class TestTempdirHandler:
     def test_tmppath_relative_basetemp_absolute(self, tmp_path, monkeypatch):
         """#4425"""
         monkeypatch.chdir(tmp_path)
-        config = FakeConfig("hello")
-        t = TempPathFactory.from_config(config)
+        config = cast(Config, FakeConfig("hello"))
+        t = TempPathFactory.from_config(config, _ispytest=True)
         assert t.getbasetemp().resolve() == (tmp_path / "hello").resolve()
 
 
 class TestConfigTmpdir:
-    def test_getbasetemp_custom_removes_old(self, testdir):
-        mytemp = testdir.tmpdir.join("xyz")
-        p = testdir.makepyfile(
+    def test_getbasetemp_custom_removes_old(self, pytester: Pytester) -> None:
+        mytemp = pytester.path.joinpath("xyz")
+        p = pytester.makepyfile(
             """
             def test_1(tmpdir):
                 pass
         """
         )
-        testdir.runpytest(p, "--basetemp=%s" % mytemp)
-        mytemp.check()
-        mytemp.ensure("hello")
+        pytester.runpytest(p, "--basetemp=%s" % mytemp)
+        assert mytemp.exists()
+        mytemp.joinpath("hello").touch()
 
-        testdir.runpytest(p, "--basetemp=%s" % mytemp)
-        mytemp.check()
-        assert not mytemp.join("hello").check()
+        pytester.runpytest(p, "--basetemp=%s" % mytemp)
+        assert mytemp.exists()
+        assert not mytemp.joinpath("hello").exists()
 
 
 testdata = [
@@ -94,9 +99,9 @@ testdata = [
 
 
 @pytest.mark.parametrize("basename, is_ok", testdata)
-def test_mktemp(testdir, basename, is_ok):
-    mytemp = testdir.tmpdir.mkdir("mytemp")
-    p = testdir.makepyfile(
+def test_mktemp(pytester: Pytester, basename: str, is_ok: bool) -> None:
+    mytemp = pytester.mkdir("mytemp")
+    p = pytester.makepyfile(
         """
         def test_abs_path(tmpdir_factory):
             tmpdir_factory.mktemp('{}', numbered=False)
@@ -105,54 +110,54 @@ def test_mktemp(testdir, basename, is_ok):
         )
     )
 
-    result = testdir.runpytest(p, "--basetemp=%s" % mytemp)
+    result = pytester.runpytest(p, "--basetemp=%s" % mytemp)
     if is_ok:
         assert result.ret == 0
-        assert mytemp.join(basename).check()
+        assert mytemp.joinpath(basename).exists()
     else:
         assert result.ret == 1
         result.stdout.fnmatch_lines("*ValueError*")
 
 
-def test_tmpdir_always_is_realpath(testdir):
+def test_tmpdir_always_is_realpath(pytester: Pytester) -> None:
     # the reason why tmpdir should be a realpath is that
     # when you cd to it and do "os.getcwd()" you will anyway
     # get the realpath.  Using the symlinked path can thus
     # easily result in path-inequality
     # XXX if that proves to be a problem, consider using
     # os.environ["PWD"]
-    realtemp = testdir.tmpdir.mkdir("myrealtemp")
-    linktemp = testdir.tmpdir.join("symlinktemp")
+    realtemp = pytester.mkdir("myrealtemp")
+    linktemp = pytester.path.joinpath("symlinktemp")
     attempt_symlink_to(linktemp, str(realtemp))
-    p = testdir.makepyfile(
+    p = pytester.makepyfile(
         """
         def test_1(tmpdir):
             import os
             assert os.path.realpath(str(tmpdir)) == str(tmpdir)
     """
     )
-    result = testdir.runpytest("-s", p, "--basetemp=%s/bt" % linktemp)
+    result = pytester.runpytest("-s", p, "--basetemp=%s/bt" % linktemp)
     assert not result.ret
 
 
-def test_tmp_path_always_is_realpath(testdir, monkeypatch):
+def test_tmp_path_always_is_realpath(pytester: Pytester, monkeypatch) -> None:
     # for reasoning see: test_tmpdir_always_is_realpath test-case
-    realtemp = testdir.tmpdir.mkdir("myrealtemp")
-    linktemp = testdir.tmpdir.join("symlinktemp")
+    realtemp = pytester.mkdir("myrealtemp")
+    linktemp = pytester.path.joinpath("symlinktemp")
     attempt_symlink_to(linktemp, str(realtemp))
     monkeypatch.setenv("PYTEST_DEBUG_TEMPROOT", str(linktemp))
-    testdir.makepyfile(
+    pytester.makepyfile(
         """
         def test_1(tmp_path):
             assert tmp_path.resolve() == tmp_path
     """
     )
-    reprec = testdir.inline_run()
+    reprec = pytester.inline_run()
     reprec.assertoutcome(passed=1)
 
 
-def test_tmpdir_too_long_on_parametrization(testdir):
-    testdir.makepyfile(
+def test_tmpdir_too_long_on_parametrization(pytester: Pytester) -> None:
+    pytester.makepyfile(
         """
         import pytest
         @pytest.mark.parametrize("arg", ["1"*1000])
@@ -160,12 +165,12 @@ def test_tmpdir_too_long_on_parametrization(testdir):
             tmpdir.ensure("hello")
     """
     )
-    reprec = testdir.inline_run()
+    reprec = pytester.inline_run()
     reprec.assertoutcome(passed=1)
 
 
-def test_tmpdir_factory(testdir):
-    testdir.makepyfile(
+def test_tmpdir_factory(pytester: Pytester) -> None:
+    pytester.makepyfile(
         """
         import pytest
         @pytest.fixture(scope='session')
@@ -175,23 +180,23 @@ def test_tmpdir_factory(testdir):
             assert session_dir.isdir()
     """
     )
-    reprec = testdir.inline_run()
+    reprec = pytester.inline_run()
     reprec.assertoutcome(passed=1)
 
 
-def test_tmpdir_fallback_tox_env(testdir, monkeypatch):
+def test_tmpdir_fallback_tox_env(pytester: Pytester, monkeypatch) -> None:
     """Test that tmpdir works even if environment variables required by getpass
     module are missing (#1010).
     """
     monkeypatch.delenv("USER", raising=False)
     monkeypatch.delenv("USERNAME", raising=False)
-    testdir.makepyfile(
+    pytester.makepyfile(
         """
         def test_some(tmpdir):
             assert tmpdir.isdir()
     """
     )
-    reprec = testdir.inline_run()
+    reprec = pytester.inline_run()
     reprec.assertoutcome(passed=1)
 
 
@@ -205,18 +210,18 @@ def break_getuser(monkeypatch):
 
 @pytest.mark.usefixtures("break_getuser")
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="no os.getuid on windows")
-def test_tmpdir_fallback_uid_not_found(testdir):
+def test_tmpdir_fallback_uid_not_found(pytester: Pytester) -> None:
     """Test that tmpdir works even if the current process's user id does not
     correspond to a valid user.
     """
 
-    testdir.makepyfile(
+    pytester.makepyfile(
         """
         def test_some(tmpdir):
             assert tmpdir.isdir()
     """
     )
-    reprec = testdir.inline_run()
+    reprec = pytester.inline_run()
     reprec.assertoutcome(passed=1)
 
 
@@ -268,7 +273,7 @@ class TestNumberedDir:
     def test_lock_register_cleanup_removal(self, tmp_path: Path) -> None:
         lock = create_cleanup_lock(tmp_path)
 
-        registry = []  # type: List[Callable[..., None]]
+        registry: List[Callable[..., None]] = []
         register_cleanup_lock_removal(lock, register=registry.append)
 
         (cleanup_func,) = registry
@@ -421,9 +426,9 @@ def test_tmpdir_equals_tmp_path(tmpdir, tmp_path):
     assert Path(tmpdir) == tmp_path
 
 
-def test_basetemp_with_read_only_files(testdir):
+def test_basetemp_with_read_only_files(pytester: Pytester) -> None:
     """Integration test for #5524"""
-    testdir.makepyfile(
+    pytester.makepyfile(
         """
         import os
         import stat
@@ -435,8 +440,49 @@ def test_basetemp_with_read_only_files(testdir):
             os.chmod(str(fn), mode & ~stat.S_IREAD)
     """
     )
-    result = testdir.runpytest("--basetemp=tmp")
+    result = pytester.runpytest("--basetemp=tmp")
     assert result.ret == 0
     # running a second time and ensure we don't crash
-    result = testdir.runpytest("--basetemp=tmp")
+    result = pytester.runpytest("--basetemp=tmp")
     assert result.ret == 0
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="checks unix permissions")
+def test_tmp_path_factory_create_directory_with_safe_permissions(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """Verify that pytest creates directories under /tmp with private permissions."""
+    # Use the test's tmp_path as the system temproot (/tmp).
+    monkeypatch.setenv("PYTEST_DEBUG_TEMPROOT", str(tmp_path))
+    tmp_factory = TempPathFactory(None, lambda *args: None, _ispytest=True)
+    basetemp = tmp_factory.getbasetemp()
+
+    # No world-readable permissions.
+    assert (basetemp.stat().st_mode & 0o077) == 0
+    # Parent too (pytest-of-foo).
+    assert (basetemp.parent.stat().st_mode & 0o077) == 0
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="checks unix permissions")
+def test_tmp_path_factory_fixes_up_world_readable_permissions(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """Verify that if a /tmp/pytest-of-foo directory already exists with
+    world-readable permissions, it is fixed.
+
+    pytest used to mkdir with such permissions, that's why we fix it up.
+    """
+    # Use the test's tmp_path as the system temproot (/tmp).
+    monkeypatch.setenv("PYTEST_DEBUG_TEMPROOT", str(tmp_path))
+    tmp_factory = TempPathFactory(None, lambda *args: None, _ispytest=True)
+    basetemp = tmp_factory.getbasetemp()
+
+    # Before - simulate bad perms.
+    os.chmod(basetemp.parent, 0o777)
+    assert (basetemp.parent.stat().st_mode & 0o077) != 0
+
+    tmp_factory = TempPathFactory(None, lambda *args: None, _ispytest=True)
+    basetemp = tmp_factory.getbasetemp()
+
+    # After - fixed.
+    assert (basetemp.parent.stat().st_mode & 0o077) == 0

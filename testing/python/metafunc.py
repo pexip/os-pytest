@@ -19,6 +19,8 @@ from hypothesis import strategies
 import pytest
 from _pytest import fixtures
 from _pytest import python
+from _pytest.compat import _format_args
+from _pytest.compat import getfuncargnames
 from _pytest.compat import NOTSET
 from _pytest.outcomes import fail
 from _pytest.pytester import Testdir
@@ -28,9 +30,9 @@ from _pytest.python import idmaker
 
 class TestMetafunc:
     def Metafunc(self, func, config=None) -> python.Metafunc:
-        # the unit tests of this class check if things work correctly
+        # The unit tests of this class check if things work correctly
         # on the funcarg level, so we don't need a full blown
-        # initialization
+        # initialization.
         class FuncFixtureInfoMock:
             name2fixturedefs = None
 
@@ -42,9 +44,9 @@ class TestMetafunc:
             obj = attr.ib()
             _nodeid = attr.ib()
 
-        names = fixtures.getfuncargnames(func)
-        fixtureinfo = FuncFixtureInfoMock(names)  # type: Any
-        definition = DefinitionMock._create(func, "mock::nodeid")  # type: Any
+        names = getfuncargnames(func)
+        fixtureinfo: Any = FuncFixtureInfoMock(names)
+        definition: Any = DefinitionMock._create(func, "mock::nodeid")
         return python.Metafunc(definition, fixtureinfo, config)
 
     def test_no_funcargs(self) -> None:
@@ -135,7 +137,7 @@ class TestMetafunc:
             metafunc.parametrize("request", [1])
 
     def test_find_parametrized_scope(self) -> None:
-        """unittest for _find_parametrized_scope (#3941)"""
+        """Unit test for _find_parametrized_scope (#3941)."""
         from _pytest.python import _find_parametrized_scope
 
         @attr.s
@@ -143,7 +145,7 @@ class TestMetafunc:
             scope = attr.ib()
 
         fixtures_defs = cast(
-            Dict[str, Sequence[fixtures.FixtureDef]],
+            Dict[str, Sequence[fixtures.FixtureDef[object]]],
             dict(
                 session_fix=[DummyFixtureDef("session")],
                 package_fix=[DummyFixtureDef("package")],
@@ -284,30 +286,29 @@ class TestMetafunc:
         escaped.encode("ascii")
 
     def test_unicode_idval(self) -> None:
-        """This tests that Unicode strings outside the ASCII character set get
+        """Test that Unicode strings outside the ASCII character set get
         escaped, using byte escapes if they're in that range or unicode
         escapes if they're not.
 
         """
         values = [
-            ("", ""),
-            ("ascii", "ascii"),
-            ("ação", "a\\xe7\\xe3o"),
-            ("josé@blah.com", "jos\\xe9@blah.com"),
+            ("", r""),
+            ("ascii", r"ascii"),
+            ("ação", r"a\xe7\xe3o"),
+            ("josé@blah.com", r"jos\xe9@blah.com"),
             (
-                "δοκ.ιμή@παράδειγμα.δοκιμή",
-                "\\u03b4\\u03bf\\u03ba.\\u03b9\\u03bc\\u03ae@\\u03c0\\u03b1\\u03c1\\u03ac\\u03b4\\u03b5\\u03b9\\u03b3"
-                "\\u03bc\\u03b1.\\u03b4\\u03bf\\u03ba\\u03b9\\u03bc\\u03ae",
+                r"δοκ.ιμή@παράδειγμα.δοκιμή",
+                r"\u03b4\u03bf\u03ba.\u03b9\u03bc\u03ae@\u03c0\u03b1\u03c1\u03ac\u03b4\u03b5\u03b9\u03b3"
+                r"\u03bc\u03b1.\u03b4\u03bf\u03ba\u03b9\u03bc\u03ae",
             ),
         ]
         for val, expected in values:
             assert _idval(val, "a", 6, None, nodeid=None, config=None) == expected
 
     def test_unicode_idval_with_config(self) -> None:
-        """unittest for expected behavior to obtain ids with
+        """Unit test for expected behavior to obtain ids with
         disable_test_id_escaping_and_forfeit_all_rights_to_community_support
-        option. (#5294)
-        """
+        option (#5294)."""
 
         class MockConfig:
             def __init__(self, config):
@@ -325,34 +326,29 @@ class TestMetafunc:
 
         option = "disable_test_id_escaping_and_forfeit_all_rights_to_community_support"
 
-        values = [
+        values: List[Tuple[str, Any, str]] = [
             ("ação", MockConfig({option: True}), "ação"),
             ("ação", MockConfig({option: False}), "a\\xe7\\xe3o"),
-        ]  # type: List[Tuple[str, Any, str]]
+        ]
         for val, config, expected in values:
             actual = _idval(val, "a", 6, None, nodeid=None, config=config)
             assert actual == expected
 
     def test_bytes_idval(self) -> None:
-        """unittest for the expected behavior to obtain ids for parametrized
-        bytes values:
-        - python2: non-ascii strings are considered bytes and formatted using
-        "binary escape", where any byte < 127 is escaped into its hex form.
-        - python3: bytes objects are always escaped using "binary escape".
-        """
+        """Unit test for the expected behavior to obtain ids for parametrized
+        bytes values: bytes objects are always escaped using "binary escape"."""
         values = [
-            (b"", ""),
-            (b"\xc3\xb4\xff\xe4", "\\xc3\\xb4\\xff\\xe4"),
-            (b"ascii", "ascii"),
-            ("αρά".encode(), "\\xce\\xb1\\xcf\\x81\\xce\\xac"),
+            (b"", r""),
+            (b"\xc3\xb4\xff\xe4", r"\xc3\xb4\xff\xe4"),
+            (b"ascii", r"ascii"),
+            ("αρά".encode(), r"\xce\xb1\xcf\x81\xce\xac"),
         ]
         for val, expected in values:
             assert _idval(val, "a", 6, idfn=None, nodeid=None, config=None) == expected
 
     def test_class_or_function_idval(self) -> None:
-        """unittest for the expected behavior to obtain ids for parametrized
-        values that are classes or functions: their __name__.
-        """
+        """Unit test for the expected behavior to obtain ids for parametrized
+        values that are classes or functions: their __name__."""
 
         class TestClass:
             pass
@@ -491,9 +487,9 @@ class TestMetafunc:
         assert result == ["a-a0", "a-a1", "a-a2"]
 
     def test_idmaker_with_idfn_and_config(self) -> None:
-        """unittest for expected behavior to create ids with idfn and
+        """Unit test for expected behavior to create ids with idfn and
         disable_test_id_escaping_and_forfeit_all_rights_to_community_support
-        option. (#5294)
+        option (#5294).
         """
 
         class MockConfig:
@@ -512,10 +508,10 @@ class TestMetafunc:
 
         option = "disable_test_id_escaping_and_forfeit_all_rights_to_community_support"
 
-        values = [
+        values: List[Tuple[Any, str]] = [
             (MockConfig({option: True}), "ação"),
             (MockConfig({option: False}), "a\\xe7\\xe3o"),
-        ]  # type: List[Tuple[Any, str]]
+        ]
         for config, expected in values:
             result = idmaker(
                 ("a",), [pytest.param("string")], idfn=lambda _: "ação", config=config,
@@ -523,9 +519,9 @@ class TestMetafunc:
             assert result == [expected]
 
     def test_idmaker_with_ids_and_config(self) -> None:
-        """unittest for expected behavior to create ids with ids and
+        """Unit test for expected behavior to create ids with ids and
         disable_test_id_escaping_and_forfeit_all_rights_to_community_support
-        option. (#5294)
+        option (#5294).
         """
 
         class MockConfig:
@@ -544,10 +540,10 @@ class TestMetafunc:
 
         option = "disable_test_id_escaping_and_forfeit_all_rights_to_community_support"
 
-        values = [
+        values: List[Tuple[Any, str]] = [
             (MockConfig({option: True}), "ação"),
             (MockConfig({option: False}), "a\\xe7\\xe3o"),
-        ]  # type: List[Tuple[Any, str]]
+        ]
         for config, expected in values:
             result = idmaker(
                 ("a",), [pytest.param("string")], ids=["ação"], config=config,
@@ -963,22 +959,22 @@ class TestMetafunc:
         def function1():
             pass
 
-        assert fixtures._format_args(function1) == "()"
+        assert _format_args(function1) == "()"
 
         def function2(arg1):
             pass
 
-        assert fixtures._format_args(function2) == "(arg1)"
+        assert _format_args(function2) == "(arg1)"
 
         def function3(arg1, arg2="qwe"):
             pass
 
-        assert fixtures._format_args(function3) == "(arg1, arg2='qwe')"
+        assert _format_args(function3) == "(arg1, arg2='qwe')"
 
         def function4(arg1, *args, **kwargs):
             pass
 
-        assert fixtures._format_args(function4) == "(arg1, *args, **kwargs)"
+        assert _format_args(function4) == "(arg1, *args, **kwargs)"
 
 
 class TestMetafuncFunctional:
@@ -1421,15 +1417,14 @@ class TestMetafuncFunctional:
                 '    @pytest.mark.parametrise("x", range(2))',
                 "E   Failed: Unknown 'parametrise' mark, did you mean 'parametrize'?",
                 "*! Interrupted: 1 error during collection !*",
-                "*= 1 error in *",
+                "*= no tests collected, 1 error in *",
             ]
         )
 
 
 class TestMetafuncFunctionalAuto:
-    """
-    Tests related to automatically find out the correct scope for parametrized tests (#1832).
-    """
+    """Tests related to automatically find out the correct scope for
+    parametrized tests (#1832)."""
 
     def test_parametrize_auto_scope(self, testdir: Testdir) -> None:
         testdir.makepyfile(
@@ -1524,9 +1519,9 @@ class TestMetafuncFunctionalAuto:
         self, testdir: Testdir, monkeypatch
     ) -> None:
         """Integration test for (#3941)"""
-        class_fix_setup = []  # type: List[object]
+        class_fix_setup: List[object] = []
         monkeypatch.setattr(sys, "class_fix_setup", class_fix_setup, raising=False)
-        func_fix_setup = []  # type: List[object]
+        func_fix_setup: List[object] = []
         monkeypatch.setattr(sys, "func_fix_setup", func_fix_setup, raising=False)
 
         testdir.makepyfile(

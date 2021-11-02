@@ -1,3 +1,13 @@
+pytest (6.2.5-1) unstable; urgency=medium
+
+  [ Scott Talbert ]
+  * Update pytest-xdist Breaks version
+
+  [ Sandro Tosi ]
+  * New upstream release; Closes: #979477
+
+ -- Sandro Tosi <morph@debian.org>  Tue, 07 Sep 2021 21:35:38 -0400
+
 pytest (6.0.2-2pexip1) pexip; urgency=medium
 
   * Bump version to 6.0.2-2pexip1

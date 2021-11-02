@@ -1,3 +1,9 @@
+pytest (6.0.2-2pexip1) pexip; urgency=medium
+
+  * Bump version to 6.0.2-2pexip1
+
+ -- Huw Jones <huw@pexip.com>  Tue, 02 Nov 2021 14:10:57 +0000
+
 pytest (6.0.2-2) unstable; urgency=medium
 
   * Uploading to unstable.

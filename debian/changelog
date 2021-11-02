@@ -1,3 +1,9 @@
+pytest (6.2.5-1pexip1) pexip; urgency=medium
+
+  * Bump version to 6.2.5-1pexip1
+
+ -- Huw Jones <huw@pexip.com>  Tue, 02 Nov 2021 15:55:21 +0000
+
 pytest (6.2.5-1) unstable; urgency=medium
 
   [ Scott Talbert ]

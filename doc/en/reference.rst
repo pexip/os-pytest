@@ -182,14 +182,14 @@ Mark a test function as using the given fixture names.
 
 .. py:function:: pytest.mark.usefixtures(*names)
 
-    :param args: the names of the fixture to use, as strings
+    :param args: The names of the fixture to use, as strings.
 
 .. note::
 
     When using `usefixtures` in hooks, it can only load fixtures when applied to a test function before test setup
     (for example in the `pytest_collection_modifyitems` hook).
 
-    Also not that his mark has no effect when applied to **fixtures**.
+    Also note that this mark has no effect when applied to **fixtures**.
 
 
 
@@ -209,8 +209,10 @@ Marks a test function as *expected to fail*.
         Condition for marking the test function as xfail (``True/False`` or a
         :ref:`condition string <string conditions>`). If a bool, you also have
         to specify ``reason`` (see :ref:`condition string <string conditions>`).
-    :keyword str reason: Reason why the test function is marked as xfail.
-    :keyword Exception raises: Exception subclass expected to be raised by the test function; other exceptions will fail the test.
+    :keyword str reason:
+        Reason why the test function is marked as xfail.
+    :keyword Type[Exception] raises:
+        Exception subclass expected to be raised by the test function; other exceptions will fail the test.
     :keyword bool run:
         If the test function should actually be executed. If ``False``, the function will always xfail and will
         not be executed (useful if a function is segfaulting).
@@ -224,7 +226,7 @@ Marks a test function as *expected to fail*.
           a new release of a library fixes a known bug).
 
 
-custom marks
+Custom marks
 ~~~~~~~~~~~~
 
 Marks are created dynamically using the factory object ``pytest.mark`` and applied as a decorator.
@@ -238,7 +240,7 @@ For example:
         ...
 
 Will create and attach a :class:`Mark <_pytest.mark.structures.Mark>` object to the collected
-:class:`Item <_pytest.nodes.Item>`, which can then be accessed by fixtures or hooks with
+:class:`Item <pytest.Item>`, which can then be accessed by fixtures or hooks with
 :meth:`Node.iter_markers <_pytest.nodes.Node.iter_markers>`. The ``mark`` object will have the following attributes:
 
 .. code-block:: python
@@ -246,6 +248,16 @@ Will create and attach a :class:`Mark <_pytest.mark.structures.Mark>` object to 
     mark.args == (10, "slow")
     mark.kwargs == {"method": "thread"}
 
+Example for using multiple custom markers:
+
+.. code-block:: python
+
+    @pytest.mark.timeout(10, "slow", method="thread")
+    @pytest.mark.slow
+    def test_function():
+        ...
+
+When :meth:`Node.iter_markers <_pytest.nodes.Node.iter_markers>` or :meth:`Node.iter_markers <_pytest.nodes.Node.iter_markers_with_node>` is used with multiple markers, the marker closest to the function will be iterated over first. The above example will result in ``@pytest.mark.slow`` followed by ``@pytest.mark.timeout(...)``.
 
 .. _`fixtures-api`:
 
@@ -302,11 +314,10 @@ request ``pytestconfig`` into your fixture and get it with ``pytestconfig.cache`
 Under the hood, the cache plugin uses the simple
 ``dumps``/``loads`` API of the :py:mod:`json` stdlib module.
 
-.. currentmodule:: _pytest.cacheprovider
+``config.cache`` is an instance of :class:`pytest.Cache`:
 
-.. automethod:: Cache.get
-.. automethod:: Cache.set
-.. automethod:: Cache.makedir
+.. autoclass:: pytest.Cache()
+   :members:
 
 
 .. fixture:: capsys
@@ -316,12 +327,10 @@ capsys
 
 **Tutorial**: :doc:`capture`.
 
-.. currentmodule:: _pytest.capture
-
-.. autofunction:: capsys()
+.. autofunction:: _pytest.capture.capsys()
     :no-auto-options:
 
-    Returns an instance of :py:class:`CaptureFixture`.
+    Returns an instance of :class:`CaptureFixture[str] <pytest.CaptureFixture>`.
 
     Example:
 
@@ -332,7 +341,7 @@ capsys
             captured = capsys.readouterr()
             assert captured.out == "hello\n"
 
-.. autoclass:: CaptureFixture()
+.. autoclass:: pytest.CaptureFixture()
     :members:
 
 
@@ -343,10 +352,10 @@ capsysbinary
 
 **Tutorial**: :doc:`capture`.
 
-.. autofunction:: capsysbinary()
+.. autofunction:: _pytest.capture.capsysbinary()
     :no-auto-options:
 
-    Returns an instance of :py:class:`CaptureFixture`.
+    Returns an instance of :class:`CaptureFixture[bytes] <pytest.CaptureFixture>`.
 
     Example:
 
@@ -365,10 +374,10 @@ capfd
 
 **Tutorial**: :doc:`capture`.
 
-.. autofunction:: capfd()
+.. autofunction:: _pytest.capture.capfd()
     :no-auto-options:
 
-    Returns an instance of :py:class:`CaptureFixture`.
+    Returns an instance of :class:`CaptureFixture[str] <pytest.CaptureFixture>`.
 
     Example:
 
@@ -387,10 +396,10 @@ capfdbinary
 
 **Tutorial**: :doc:`capture`.
 
-.. autofunction:: capfdbinary()
+.. autofunction:: _pytest.capture.capfdbinary()
     :no-auto-options:
 
-    Returns an instance of :py:class:`CaptureFixture`.
+    Returns an instance of :class:`CaptureFixture[bytes] <pytest.CaptureFixture>`.
 
     Example:
 
@@ -431,7 +440,7 @@ request
 
 The ``request`` fixture is a special fixture providing information of the requesting test function.
 
-.. autoclass:: _pytest.fixtures.FixtureRequest()
+.. autoclass:: pytest.FixtureRequest()
     :members:
 
 
@@ -473,9 +482,9 @@ caplog
 .. autofunction:: _pytest.logging.caplog()
     :no-auto-options:
 
-    This returns a :class:`_pytest.logging.LogCaptureFixture` instance.
+    Returns a :class:`pytest.LogCaptureFixture` instance.
 
-.. autoclass:: _pytest.logging.LogCaptureFixture
+.. autoclass:: pytest.LogCaptureFixture()
     :members:
 
 
@@ -484,30 +493,30 @@ caplog
 monkeypatch
 ~~~~~~~~~~~
 
-.. currentmodule:: _pytest.monkeypatch
-
 **Tutorial**: :doc:`monkeypatch`.
 
 .. autofunction:: _pytest.monkeypatch.monkeypatch()
     :no-auto-options:
 
-    This returns a :class:`MonkeyPatch` instance.
+    Returns a :class:`~pytest.MonkeyPatch` instance.
 
-.. autoclass:: _pytest.monkeypatch.MonkeyPatch
+.. autoclass:: pytest.MonkeyPatch
     :members:
 
 
-.. fixture:: testdir
+.. fixture:: pytester
 
-testdir
-~~~~~~~
+pytester
+~~~~~~~~
 
-.. currentmodule:: _pytest.pytester
+.. versionadded:: 6.2
 
-This fixture provides a :class:`Testdir` instance useful for black-box testing of test files, making it ideal to
-test plugins.
+Provides a :class:`~pytest.Pytester` instance that can be used to run and test pytest itself.
 
-To use it, include in your top-most ``conftest.py`` file:
+It provides an empty directory where pytest can be executed in isolation, and contains facilities
+to write tests, configuration files, and match against expected output.
+
+To use it, include in your topmost ``conftest.py`` file:
 
 .. code-block:: python
 
@@ -515,13 +524,30 @@ To use it, include in your top-most ``conftest.py`` file:
 
 
 
-.. autoclass:: Testdir()
+.. autoclass:: pytest.Pytester()
     :members:
 
-.. autoclass:: RunResult()
+.. autoclass:: _pytest.pytester.RunResult()
     :members:
 
-.. autoclass:: LineMatcher()
+.. autoclass:: _pytest.pytester.LineMatcher()
+    :members:
+    :special-members: __str__
+
+.. autoclass:: _pytest.pytester.HookRecorder()
+    :members:
+
+.. fixture:: testdir
+
+testdir
+~~~~~~~
+
+Identical to :fixture:`pytester`, but provides an instance whose methods return
+legacy ``py.path.local`` objects instead when applicable.
+
+New code should avoid using :fixture:`testdir` in favor of :fixture:`pytester`.
+
+.. autoclass:: pytest.Testdir()
     :members:
 
 
@@ -532,18 +558,13 @@ recwarn
 
 **Tutorial**: :ref:`assertwarnings`
 
-.. currentmodule:: _pytest.recwarn
-
-.. autofunction:: recwarn()
+.. autofunction:: _pytest.recwarn.recwarn()
     :no-auto-options:
 
-.. autoclass:: _pytest.recwarn.WarningsRecorder()
+.. autoclass:: pytest.WarningsRecorder()
     :members:
 
 Each recorded warning is an instance of :class:`warnings.WarningMessage`.
-
-.. note::
-    :class:`RecordedWarning` was changed from a plain class to a namedtuple in pytest 3.1
 
 .. note::
     ``DeprecationWarning`` and ``PendingDeprecationWarning`` are treated
@@ -557,13 +578,11 @@ tmp_path
 
 **Tutorial**: :doc:`tmpdir`
 
-.. currentmodule:: _pytest.tmpdir
-
-.. autofunction:: tmp_path()
+.. autofunction:: _pytest.tmpdir.tmp_path()
     :no-auto-options:
 
 
-.. fixture:: tmp_path_factory
+.. fixture:: _pytest.tmpdir.tmp_path_factory
 
 tmp_path_factory
 ~~~~~~~~~~~~~~~~
@@ -572,12 +591,9 @@ tmp_path_factory
 
 .. _`tmp_path_factory factory api`:
 
-``tmp_path_factory`` instances have the following methods:
+``tmp_path_factory`` is an instance of :class:`~pytest.TempPathFactory`:
 
-.. currentmodule:: _pytest.tmpdir
-
-.. automethod:: TempPathFactory.mktemp
-.. automethod:: TempPathFactory.getbasetemp
+.. autoclass:: pytest.TempPathFactory()
 
 
 .. fixture:: tmpdir
@@ -587,9 +603,7 @@ tmpdir
 
 **Tutorial**: :doc:`tmpdir`
 
-.. currentmodule:: _pytest.tmpdir
-
-.. autofunction:: tmpdir()
+.. autofunction:: _pytest.tmpdir.tmpdir()
     :no-auto-options:
 
 
@@ -602,12 +616,9 @@ tmpdir_factory
 
 .. _`tmpdir factory api`:
 
-``tmpdir_factory`` instances have the following methods:
+``tmp_path_factory`` is an instance of :class:`~pytest.TempdirFactory`:
 
-.. currentmodule:: _pytest.tmpdir
-
-.. automethod:: TempdirFactory.mktemp
-.. automethod:: TempdirFactory.getbasetemp
+.. autoclass:: pytest.TempdirFactory()
 
 
 .. _`hook-reference`:
@@ -654,7 +665,6 @@ Collection hooks
 
 .. autofunction:: pytest_collection
 .. autofunction:: pytest_ignore_collect
-.. autofunction:: pytest_collect_directory
 .. autofunction:: pytest_collect_file
 .. autofunction:: pytest_pycollect_makemodule
 
@@ -670,12 +680,16 @@ items, delete or otherwise amend the test items:
 
 .. autofunction:: pytest_collection_modifyitems
 
+.. note::
+    If this hook is implemented in ``conftest.py`` files, it always receives all collected items, not only those
+    under the ``conftest.py`` where it is implemented.
+
 .. autofunction:: pytest_collection_finish
 
 Test running (runtest) hooks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-All runtest related hooks receive a :py:class:`pytest.Item <_pytest.main.Item>` object.
+All runtest related hooks receive a :py:class:`pytest.Item <pytest.Item>` object.
 
 .. autofunction:: pytest_runtestloop
 .. autofunction:: pytest_runtest_protocol
@@ -687,8 +701,8 @@ All runtest related hooks receive a :py:class:`pytest.Item <_pytest.main.Item>` 
 .. autofunction:: pytest_runtest_makereport
 
 For deeper understanding you may look at the default implementation of
-these hooks in :py:mod:`_pytest.runner` and maybe also
-in :py:mod:`_pytest.pdb` which interacts with :py:mod:`_pytest.capture`
+these hooks in ``_pytest.runner`` and maybe also
+in ``_pytest.pdb`` which interacts with ``_pytest.capture``
 and its input/output capturing in order to immediately drop
 into interactive debugging when a test failure occurs.
 
@@ -751,14 +765,14 @@ CallInfo
 Class
 ~~~~~
 
-.. autoclass:: _pytest.python.Class()
+.. autoclass:: pytest.Class()
     :members:
     :show-inheritance:
 
 Collector
 ~~~~~~~~~
 
-.. autoclass:: _pytest.nodes.Collector()
+.. autoclass:: pytest.Collector()
     :members:
     :show-inheritance:
 
@@ -786,13 +800,13 @@ ExceptionInfo
 ExitCode
 ~~~~~~~~
 
-.. autoclass:: _pytest.config.ExitCode
+.. autoclass:: pytest.ExitCode
     :members:
 
 File
 ~~~~
 
-.. autoclass:: _pytest.nodes.File()
+.. autoclass:: pytest.File()
     :members:
     :show-inheritance:
 
@@ -814,14 +828,21 @@ FSCollector
 Function
 ~~~~~~~~
 
-.. autoclass:: _pytest.python.Function()
+.. autoclass:: pytest.Function()
+    :members:
+    :show-inheritance:
+
+FunctionDefinition
+~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: _pytest.python.FunctionDefinition()
     :members:
     :show-inheritance:
 
 Item
 ~~~~
 
-.. autoclass:: _pytest.nodes.Item()
+.. autoclass:: pytest.Item()
     :members:
     :show-inheritance:
 
@@ -855,7 +876,7 @@ Metafunc
 Module
 ~~~~~~
 
-.. autoclass:: _pytest.python.Module()
+.. autoclass:: pytest.Module()
     :members:
     :show-inheritance:
 
@@ -871,12 +892,6 @@ Parser
 .. autoclass:: _pytest.config.argparsing.Parser()
     :members:
 
-PluginManager
-~~~~~~~~~~~~~
-
-.. autoclass:: pluggy.PluginManager()
-    :members:
-
 
 PytestPluginManager
 ~~~~~~~~~~~~~~~~~~~
@@ -884,12 +899,13 @@ PytestPluginManager
 .. autoclass:: _pytest.config.PytestPluginManager()
     :members:
     :undoc-members:
+    :inherited-members:
     :show-inheritance:
 
 Session
 ~~~~~~~
 
-.. autoclass:: _pytest.main.Session()
+.. autoclass:: pytest.Session()
     :members:
     :show-inheritance:
 
@@ -904,11 +920,8 @@ TestReport
 _Result
 ~~~~~~~
 
-Result used within :ref:`hook wrappers <hookwrapper>`.
+Result object used within :ref:`hook wrappers <hookwrapper>`, see :py:class:`_Result in the pluggy documentation <pluggy._callers._Result>` for more information.
 
-.. autoclass:: pluggy.callers._Result
-.. automethod:: pluggy.callers._Result.get_result
-.. automethod:: pluggy.callers._Result.force_result
 
 Global Variables
 ----------------
@@ -1031,7 +1044,7 @@ When set (regardless of value), pytest will use color in terminal output.
 Exceptions
 ----------
 
-.. autoclass:: _pytest.config.UsageError()
+.. autoclass:: pytest.UsageError()
     :show-inheritance:
 
 .. _`warnings ref`:
@@ -1066,6 +1079,12 @@ Custom warnings generated in some situations such as improper usage or deprecate
    :show-inheritance:
 
 .. autoclass:: pytest.PytestUnknownMarkWarning
+   :show-inheritance:
+
+.. autoclass:: pytest.PytestUnraisableExceptionWarning
+   :show-inheritance:
+
+.. autoclass:: pytest.PytestUnhandledThreadExceptionWarning
    :show-inheritance:
 
 
@@ -1243,12 +1262,13 @@ passed multiple times. The expected format is ``name=value``. For example::
 .. confval:: junit_family
 
     .. versionadded:: 4.2
+    .. versionchanged:: 6.1
+        Default changed to ``xunit2``.
 
     Configures the format of the generated JUnit XML file. The possible options are:
 
-    * ``xunit1`` (or ``legacy``): produces old style output, compatible with the xunit 1.0 format. **This is the default**.
-    * ``xunit2``: produces `xunit 2.0 style output <https://github.com/jenkinsci/xunit-plugin/blob/xunit-2.3.2/src/main/resources/org/jenkinsci/plugins/xunit/types/model/xsd/junit-10.xsd>`__,
-        which should be more compatible with latest Jenkins versions.
+    * ``xunit1`` (or ``legacy``): produces old style output, compatible with the xunit 1.0 format.
+    * ``xunit2``: produces `xunit 2.0 style output <https://github.com/jenkinsci/xunit-plugin/blob/xunit-2.3.2/src/main/resources/org/jenkinsci/plugins/xunit/types/model/xsd/junit-10.xsd>`__, which should be more compatible with latest Jenkins versions.  **This is the default**.
 
     .. code-block:: ini
 
@@ -1518,7 +1538,8 @@ passed multiple times. The expected format is ``name=value``. For example::
         [seq]   matches any character in seq
         [!seq]  matches any char not in seq
 
-   Default patterns are ``'.*', 'build', 'dist', 'CVS', '_darcs', '{arch}', '*.egg', 'venv'``.
+   Default patterns are ``'*.egg'``, ``'.*'``, ``'_darcs'``, ``'build'``,
+   ``'CVS'``, ``'dist'``, ``'node_modules'``, ``'venv'``, ``'{arch}'``.
    Setting a ``norecursedirs`` replaces the default.  Here is an example of
    how to avoid certain directories:
 
@@ -1659,3 +1680,297 @@ passed multiple times. The expected format is ``name=value``. For example::
 
         [pytest]
         xfail_strict = True
+
+
+.. _`command-line-flags`:
+
+Command-line Flags
+------------------
+
+All the command-line flags can be obtained by running ``pytest --help``::
+
+    $ pytest --help
+    usage: pytest [options] [file_or_dir] [file_or_dir] [...]
+
+    positional arguments:
+      file_or_dir
+
+    general:
+      -k EXPRESSION         only run tests which match the given substring
+                            expression. An expression is a python evaluatable
+                            expression where all names are substring-matched
+                            against test names and their parent classes.
+                            Example: -k 'test_method or test_other' matches all
+                            test functions and classes whose name contains
+                            'test_method' or 'test_other', while -k 'not
+                            test_method' matches those that don't contain
+                            'test_method' in their names. -k 'not test_method
+                            and not test_other' will eliminate the matches.
+                            Additionally keywords are matched to classes and
+                            functions containing extra names in their
+                            'extra_keyword_matches' set, as well as functions
+                            which have names assigned directly to them. The
+                            matching is case-insensitive.
+      -m MARKEXPR           only run tests matching given mark expression.
+                            For example: -m 'mark1 and not mark2'.
+      --markers             show markers (builtin, plugin and per-project ones).
+      -x, --exitfirst       exit instantly on first error or failed test.
+      --fixtures, --funcargs
+                            show available fixtures, sorted by plugin appearance
+                            (fixtures with leading '_' are only shown with '-v')
+      --fixtures-per-test   show fixtures per test
+      --pdb                 start the interactive Python debugger on errors or
+                            KeyboardInterrupt.
+      --pdbcls=modulename:classname
+                            start a custom interactive Python debugger on
+                            errors. For example:
+                            --pdbcls=IPython.terminal.debugger:TerminalPdb
+      --trace               Immediately break when running each test.
+      --capture=method      per-test capturing method: one of fd|sys|no|tee-sys.
+      -s                    shortcut for --capture=no.
+      --runxfail            report the results of xfail tests as if they were
+                            not marked
+      --lf, --last-failed   rerun only the tests that failed at the last run (or
+                            all if none failed)
+      --ff, --failed-first  run all tests, but run the last failures first.
+                            This may re-order tests and thus lead to repeated
+                            fixture setup/teardown.
+      --nf, --new-first     run tests from new files first, then the rest of the
+                            tests sorted by file mtime
+      --cache-show=[CACHESHOW]
+                            show cache contents, don't perform collection or
+                            tests. Optional argument: glob (default: '*').
+      --cache-clear         remove all cache contents at start of test run.
+      --lfnf={all,none}, --last-failed-no-failures={all,none}
+                            which tests to run with no previously (known)
+                            failures.
+      --sw, --stepwise      exit on test failure and continue from last failing
+                            test next time
+      --sw-skip, --stepwise-skip
+                            ignore the first failing test but stop on the next
+                            failing test
+
+    reporting:
+      --durations=N         show N slowest setup/test durations (N=0 for all).
+      --durations-min=N     Minimal duration in seconds for inclusion in slowest
+                            list. Default 0.005
+      -v, --verbose         increase verbosity.
+      --no-header           disable header
+      --no-summary          disable summary
+      -q, --quiet           decrease verbosity.
+      --verbosity=VERBOSE   set verbosity. Default is 0.
+      -r chars              show extra test summary info as specified by chars:
+                            (f)ailed, (E)rror, (s)kipped, (x)failed, (X)passed,
+                            (p)assed, (P)assed with output, (a)ll except passed
+                            (p/P), or (A)ll. (w)arnings are enabled by default
+                            (see --disable-warnings), 'N' can be used to reset
+                            the list. (default: 'fE').
+      --disable-warnings, --disable-pytest-warnings
+                            disable warnings summary
+      -l, --showlocals      show locals in tracebacks (disabled by default).
+      --tb=style            traceback print mode
+                            (auto/long/short/line/native/no).
+      --show-capture={no,stdout,stderr,log,all}
+                            Controls how captured stdout/stderr/log is shown on
+                            failed tests. Default is 'all'.
+      --full-trace          don't cut any tracebacks (default is to cut).
+      --color=color         color terminal output (yes/no/auto).
+      --code-highlight={yes,no}
+                            Whether code should be highlighted (only if --color
+                            is also enabled)
+      --pastebin=mode       send failed|all info to bpaste.net pastebin service.
+      --junit-xml=path      create junit-xml style report file at given path.
+      --junit-prefix=str    prepend prefix to classnames in junit-xml output
+
+    pytest-warnings:
+      -W PYTHONWARNINGS, --pythonwarnings=PYTHONWARNINGS
+                            set which warnings to report, see -W option of
+                            python itself.
+      --maxfail=num         exit after first num failures or errors.
+      --strict-config       any warnings encountered while parsing the `pytest`
+                            section of the configuration file raise errors.
+      --strict-markers      markers not registered in the `markers` section of
+                            the configuration file raise errors.
+      --strict              (deprecated) alias to --strict-markers.
+      -c file               load configuration from `file` instead of trying to
+                            locate one of the implicit configuration files.
+      --continue-on-collection-errors
+                            Force test execution even if collection errors
+                            occur.
+      --rootdir=ROOTDIR     Define root directory for tests. Can be relative
+                            path: 'root_dir', './root_dir',
+                            'root_dir/another_dir/'; absolute path:
+                            '/home/user/root_dir'; path with variables:
+                            '$HOME/root_dir'.
+
+    collection:
+      --collect-only, --co  only collect tests, don't execute them.
+      --pyargs              try to interpret all arguments as python packages.
+      --ignore=path         ignore path during collection (multi-allowed).
+      --ignore-glob=path    ignore path pattern during collection (multi-
+                            allowed).
+      --deselect=nodeid_prefix
+                            deselect item (via node id prefix) during collection
+                            (multi-allowed).
+      --confcutdir=dir      only load conftest.py's relative to specified dir.
+      --noconftest          Don't load any conftest.py files.
+      --keep-duplicates     Keep duplicate tests.
+      --collect-in-virtualenv
+                            Don't ignore tests in a local virtualenv directory
+      --import-mode={prepend,append,importlib}
+                            prepend/append to sys.path when importing test
+                            modules and conftest files, default is to prepend.
+      --doctest-modules     run doctests in all .py modules
+      --doctest-report={none,cdiff,ndiff,udiff,only_first_failure}
+                            choose another output format for diffs on doctest
+                            failure
+      --doctest-glob=pat    doctests file matching pattern, default: test*.txt
+      --doctest-ignore-import-errors
+                            ignore doctest ImportErrors
+      --doctest-continue-on-failure
+                            for a given doctest, continue to run after the first
+                            failure
+
+    test session debugging and configuration:
+      --basetemp=dir        base temporary directory for this test run.(warning:
+                            this directory is removed if it exists)
+      -V, --version         display pytest version and information about
+                            plugins.When given twice, also display information
+                            about plugins.
+      -h, --help            show help message and configuration info
+      -p name               early-load given plugin module name or entry point
+                            (multi-allowed).
+                            To avoid loading of plugins, use the `no:` prefix,
+                            e.g. `no:doctest`.
+      --trace-config        trace considerations of conftest.py files.
+      --debug               store internal tracing debug information in
+                            'pytestdebug.log'.
+      -o OVERRIDE_INI, --override-ini=OVERRIDE_INI
+                            override ini option with "option=value" style, e.g.
+                            `-o xfail_strict=True -o cache_dir=cache`.
+      --assert=MODE         Control assertion debugging tools.
+                            'plain' performs no assertion debugging.
+                            'rewrite' (the default) rewrites assert statements
+                            in test modules on import to provide assert
+                            expression information.
+      --setup-only          only setup fixtures, do not execute tests.
+      --setup-show          show setup of fixtures while executing tests.
+      --setup-plan          show what fixtures and tests would be executed but
+                            don't execute anything.
+
+    logging:
+      --log-level=LEVEL     level of messages to catch/display.
+                            Not set by default, so it depends on the root/parent
+                            log handler's effective level, where it is "WARNING"
+                            by default.
+      --log-format=LOG_FORMAT
+                            log format as used by the logging module.
+      --log-date-format=LOG_DATE_FORMAT
+                            log date format as used by the logging module.
+      --log-cli-level=LOG_CLI_LEVEL
+                            cli logging level.
+      --log-cli-format=LOG_CLI_FORMAT
+                            log format as used by the logging module.
+      --log-cli-date-format=LOG_CLI_DATE_FORMAT
+                            log date format as used by the logging module.
+      --log-file=LOG_FILE   path to a file when logging will be written to.
+      --log-file-level=LOG_FILE_LEVEL
+                            log file logging level.
+      --log-file-format=LOG_FILE_FORMAT
+                            log format as used by the logging module.
+      --log-file-date-format=LOG_FILE_DATE_FORMAT
+                            log date format as used by the logging module.
+      --log-auto-indent=LOG_AUTO_INDENT
+                            Auto-indent multiline messages passed to the logging
+                            module. Accepts true|on, false|off or an integer.
+
+    [pytest] ini-options in the first pytest.ini|tox.ini|setup.cfg file found:
+
+      markers (linelist):   markers for test functions
+      empty_parameter_set_mark (string):
+                            default marker for empty parametersets
+      norecursedirs (args): directory patterns to avoid for recursion
+      testpaths (args):     directories to search for tests when no files or
+                            directories are given in the command line.
+      filterwarnings (linelist):
+                            Each line specifies a pattern for
+                            warnings.filterwarnings. Processed after
+                            -W/--pythonwarnings.
+      usefixtures (args):   list of default fixtures to be used with this
+                            project
+      python_files (args):  glob-style file patterns for Python test module
+                            discovery
+      python_classes (args):
+                            prefixes or glob names for Python test class
+                            discovery
+      python_functions (args):
+                            prefixes or glob names for Python test function and
+                            method discovery
+      disable_test_id_escaping_and_forfeit_all_rights_to_community_support (bool):
+                            disable string escape non-ascii characters, might
+                            cause unwanted side effects(use at your own risk)
+      console_output_style (string):
+                            console output: "classic", or with additional
+                            progress information ("progress" (percentage) |
+                            "count").
+      xfail_strict (bool):  default for the strict parameter of xfail markers
+                            when not given explicitly (default: False)
+      enable_assertion_pass_hook (bool):
+                            Enables the pytest_assertion_pass hook.Make sure to
+                            delete any previously generated pyc cache files.
+      junit_suite_name (string):
+                            Test suite name for JUnit report
+      junit_logging (string):
+                            Write captured log messages to JUnit report: one of
+                            no|log|system-out|system-err|out-err|all
+      junit_log_passing_tests (bool):
+                            Capture log information for passing tests to JUnit
+                            report:
+      junit_duration_report (string):
+                            Duration time to report: one of total|call
+      junit_family (string):
+                            Emit XML for schema: one of legacy|xunit1|xunit2
+      doctest_optionflags (args):
+                            option flags for doctests
+      doctest_encoding (string):
+                            encoding used for doctest files
+      cache_dir (string):   cache directory path.
+      log_level (string):   default value for --log-level
+      log_format (string):  default value for --log-format
+      log_date_format (string):
+                            default value for --log-date-format
+      log_cli (bool):       enable log display during test run (also known as
+                            "live logging").
+      log_cli_level (string):
+                            default value for --log-cli-level
+      log_cli_format (string):
+                            default value for --log-cli-format
+      log_cli_date_format (string):
+                            default value for --log-cli-date-format
+      log_file (string):    default value for --log-file
+      log_file_level (string):
+                            default value for --log-file-level
+      log_file_format (string):
+                            default value for --log-file-format
+      log_file_date_format (string):
+                            default value for --log-file-date-format
+      log_auto_indent (string):
+                            default value for --log-auto-indent
+      faulthandler_timeout (string):
+                            Dump the traceback of all threads if a test takes
+                            more than TIMEOUT seconds to finish.
+      addopts (args):       extra command line options
+      minversion (string):  minimally required pytest version
+      required_plugins (args):
+                            plugins that must be present for pytest to run
+
+    environment variables:
+      PYTEST_ADDOPTS           extra command line options
+      PYTEST_PLUGINS           comma-separated plugins to load during startup
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD set to disable plugin auto-loading
+      PYTEST_DEBUG             set to enable debug tracing of pytest's internals
+
+
+    to see available markers type: pytest --markers
+    to see available fixtures type: pytest --fixtures
+    (shown according to specified file_or_dir or current dir if not specified; fixtures with leading '_' are only shown with the '-v' option

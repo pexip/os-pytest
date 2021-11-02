@@ -13,6 +13,7 @@ from _pytest.config import PytestPluginManager
 from _pytest.pytester import CwdSnapshot
 from _pytest.pytester import HookRecorder
 from _pytest.pytester import LineMatcher
+from _pytest.pytester import Pytester
 from _pytest.pytester import SysModulesSnapshot
 from _pytest.pytester import SysPathsSnapshot
 from _pytest.pytester import Testdir
@@ -23,7 +24,9 @@ def test_make_hook_recorder(testdir) -> None:
     recorder = testdir.make_hook_recorder(item.config.pluginmanager)
     assert not recorder.getfailures()
 
-    pytest.xfail("internal reportrecorder tests need refactoring")
+    # (The silly condition is to fool mypy that the code below this is reachable)
+    if 1 + 1 == 2:
+        pytest.xfail("internal reportrecorder tests need refactoring")
 
     class rep:
         excinfo = None
@@ -166,18 +169,18 @@ def test_xpassed_with_strict_is_considered_a_failure(testdir) -> None:
 def make_holder():
     class apiclass:
         def pytest_xyz(self, arg):
-            "x"
+            """X"""
 
         def pytest_xyz_noarg(self):
-            "x"
+            """X"""
 
     apimod = type(os)("api")
 
     def pytest_xyz(arg):
-        "x"
+        """X"""
 
     def pytest_xyz_noarg():
-        "x"
+        """X"""
 
     apimod.pytest_xyz = pytest_xyz  # type: ignore
     apimod.pytest_xyz_noarg = pytest_xyz_noarg  # type: ignore
@@ -225,7 +228,7 @@ class TestInlineRunModulesCleanup:
 
     def spy_factory(self):
         class SysModulesSnapshotSpy:
-            instances = []  # type: List[SysModulesSnapshotSpy]
+            instances: List["SysModulesSnapshotSpy"] = []  # noqa: F821
 
             def __init__(self, preserve=None) -> None:
                 SysModulesSnapshotSpy.instances.append(self)
@@ -406,7 +409,7 @@ class TestSysPathsSnapshot:
         original_data = list(getattr(sys, path_type))
         original_other = getattr(sys, other_path_type)
         original_other_data = list(original_other)
-        new = []  # type: List[object]
+        new: List[object] = []
         snapshot = SysPathsSnapshot()
         monkeypatch.setattr(sys, path_type, new)
         snapshot.restore()
@@ -578,20 +581,20 @@ def test_linematcher_no_matching(function) -> None:
         obtained = str(e.value).splitlines()
         if function == "no_fnmatch_line":
             assert obtained == [
-                "nomatch: '{}'".format(good_pattern),
+                f"nomatch: '{good_pattern}'",
                 "    and: 'cachedir: .pytest_cache'",
                 "    and: 'collecting ... collected 1 item'",
                 "    and: ''",
-                "fnmatch: '{}'".format(good_pattern),
+                f"fnmatch: '{good_pattern}'",
                 "   with: 'show_fixtures_per_test.py OK'",
             ]
         else:
             assert obtained == [
-                " nomatch: '{}'".format(good_pattern),
+                f" nomatch: '{good_pattern}'",
                 "     and: 'cachedir: .pytest_cache'",
                 "     and: 'collecting ... collected 1 item'",
                 "     and: ''",
-                "re.match: '{}'".format(good_pattern),
+                f"re.match: '{good_pattern}'",
                 "    with: 'show_fixtures_per_test.py OK'",
             ]
 
@@ -605,6 +608,11 @@ def test_linematcher_no_matching_after_match() -> None:
     with pytest.raises(pytest.fail.Exception) as e:
         lm.no_fnmatch_line("*")
     assert str(e.value).splitlines() == ["fnmatch: '*'", "   with: '1'"]
+
+
+def test_linematcher_string_api() -> None:
+    lm = LineMatcher(["foo", "bar"])
+    assert str(lm) == "foo\nbar"
 
 
 def test_pytester_addopts_before_testdir(request, monkeypatch) -> None:
@@ -705,13 +713,13 @@ def test_popen_default_stdin_stderr_and_stdin_None(testdir) -> None:
     assert result.ret == 0
 
 
-def test_spawn_uses_tmphome(testdir) -> None:
-    tmphome = str(testdir.tmpdir)
+def test_spawn_uses_tmphome(pytester: Pytester) -> None:
+    tmphome = str(pytester.path)
     assert os.environ.get("HOME") == tmphome
 
-    testdir.monkeypatch.setenv("CUSTOMENV", "42")
+    pytester._monkeypatch.setenv("CUSTOMENV", "42")
 
-    p1 = testdir.makepyfile(
+    p1 = pytester.makepyfile(
         """
         import os
 
@@ -722,7 +730,7 @@ def test_spawn_uses_tmphome(testdir) -> None:
             tmphome=tmphome
         )
     )
-    child = testdir.spawn_pytest(str(p1))
+    child = pytester.spawn_pytest(str(p1))
     out = child.read()
     assert child.wait() == 0, out.decode("utf8")
 
@@ -799,9 +807,10 @@ def test_parse_summary_line_always_plural():
 
 def test_makefile_joins_absolute_path(testdir: Testdir) -> None:
     absfile = testdir.tmpdir / "absfile"
-    if sys.platform == "win32":
-        with pytest.raises(OSError):
-            testdir.makepyfile(**{str(absfile): ""})
-    else:
-        p1 = testdir.makepyfile(**{str(absfile): ""})
-        assert str(p1) == (testdir.tmpdir / absfile) + ".py"
+    p1 = testdir.makepyfile(**{str(absfile): ""})
+    assert str(p1) == str(testdir.tmpdir / "absfile.py")
+
+
+def test_testtmproot(testdir):
+    """Check test_tmproot is a py.path attribute for backward compatibility."""
+    assert testdir.test_tmproot.check(dir=1)

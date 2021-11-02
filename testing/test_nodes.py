@@ -1,26 +1,33 @@
+from typing import List
+from typing import Type
+
 import py
 
 import pytest
 from _pytest import nodes
-from _pytest.pytester import Testdir
+from _pytest.pytester import Pytester
+from _pytest.warning_types import PytestWarning
 
 
 @pytest.mark.parametrize(
-    "baseid, nodeid, expected",
+    ("nodeid", "expected"),
     (
-        ("", "", True),
-        ("", "foo", True),
-        ("", "foo/bar", True),
-        ("", "foo/bar::TestBaz", True),
-        ("foo", "food", False),
-        ("foo/bar::TestBaz", "foo/bar", False),
-        ("foo/bar::TestBaz", "foo/bar::TestBop", False),
-        ("foo/bar", "foo/bar::TestBop", True),
+        ("", [""]),
+        ("a", ["", "a"]),
+        ("aa/b", ["", "aa", "aa/b"]),
+        ("a/b/c", ["", "a", "a/b", "a/b/c"]),
+        ("a/bbb/c::D", ["", "a", "a/bbb", "a/bbb/c", "a/bbb/c::D"]),
+        ("a/b/c::D::eee", ["", "a", "a/b", "a/b/c", "a/b/c::D", "a/b/c::D::eee"]),
+        # :: considered only at the last component.
+        ("::xx", ["", "::xx"]),
+        ("a/b/c::D/d::e", ["", "a", "a/b", "a/b/c::D", "a/b/c::D/d", "a/b/c::D/d::e"]),
+        # : alone is not a separator.
+        ("a/b::D:e:f::g", ["", "a", "a/b", "a/b::D:e:f", "a/b::D:e:f::g"]),
     ),
 )
-def test_ischildnode(baseid: str, nodeid: str, expected: bool) -> None:
-    result = nodes.ischildnode(baseid, nodeid)
-    assert result is expected
+def test_iterparentnodeids(nodeid: str, expected: List[str]) -> None:
+    result = list(nodes.iterparentnodeids(nodeid))
+    assert result == expected
 
 
 def test_node_from_parent_disallowed_arguments() -> None:
@@ -30,15 +37,33 @@ def test_node_from_parent_disallowed_arguments() -> None:
         nodes.Node.from_parent(None, config=None)  # type: ignore[arg-type]
 
 
-def test_std_warn_not_pytestwarning(testdir: Testdir) -> None:
-    items = testdir.getitems(
+@pytest.mark.parametrize(
+    "warn_type, msg", [(DeprecationWarning, "deprecated"), (PytestWarning, "pytest")]
+)
+def test_node_warn_is_no_longer_only_pytest_warnings(
+    pytester: Pytester, warn_type: Type[Warning], msg: str
+) -> None:
+    items = pytester.getitems(
         """
         def test():
             pass
     """
     )
-    with pytest.raises(ValueError, match=".*instance of PytestWarning.*"):
-        items[0].warn(UserWarning("some warning"))  # type: ignore[arg-type]
+    with pytest.warns(warn_type, match=msg):
+        items[0].warn(warn_type(msg))
+
+
+def test_node_warning_enforces_warning_types(pytester: Pytester) -> None:
+    items = pytester.getitems(
+        """
+        def test():
+            pass
+    """
+    )
+    with pytest.raises(
+        ValueError, match="warning must be an instance of Warning or subclass"
+    ):
+        items[0].warn(Exception("ok"))  # type: ignore[arg-type]
 
 
 def test__check_initialpaths_for_relpath() -> None:
@@ -61,12 +86,12 @@ def test__check_initialpaths_for_relpath() -> None:
     assert nodes._check_initialpaths_for_relpath(FakeSession2, outside) is None
 
 
-def test_failure_with_changed_cwd(testdir):
+def test_failure_with_changed_cwd(pytester: Pytester) -> None:
     """
     Test failure lines should use absolute paths if cwd has changed since
     invocation, so the path is correct (#6428).
     """
-    p = testdir.makepyfile(
+    p = pytester.makepyfile(
         """
         import os
         import pytest
@@ -84,5 +109,5 @@ def test_failure_with_changed_cwd(testdir):
             assert False
     """
     )
-    result = testdir.runpytest()
+    result = pytester.runpytest()
     result.stdout.fnmatch_lines([str(p) + ":*: AssertionError", "*1 failed in *"])

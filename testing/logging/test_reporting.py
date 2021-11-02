@@ -262,10 +262,10 @@ def test_log_cli_default_level_multiple_tests(testdir, request):
     result = testdir.runpytest()
     result.stdout.fnmatch_lines(
         [
-            "{}::test_log_1 ".format(filename),
+            f"{filename}::test_log_1 ",
             "*WARNING*log message from test_log_1*",
             "PASSED *50%*",
-            "{}::test_log_2 ".format(filename),
+            f"{filename}::test_log_2 ",
             "*WARNING*log message from test_log_2*",
             "PASSED *100%*",
             "=* 2 passed in *=",
@@ -318,7 +318,7 @@ def test_log_cli_default_level_sections(testdir, request):
     result = testdir.runpytest()
     result.stdout.fnmatch_lines(
         [
-            "{}::test_log_1 ".format(filename),
+            f"{filename}::test_log_1 ",
             "*-- live log start --*",
             "*WARNING* >>>>> START >>>>>*",
             "*-- live log setup --*",
@@ -330,7 +330,7 @@ def test_log_cli_default_level_sections(testdir, request):
             "*WARNING*log message from teardown of test_log_1*",
             "*-- live log finish --*",
             "*WARNING* <<<<< END <<<<<<<*",
-            "{}::test_log_2 ".format(filename),
+            f"{filename}::test_log_2 ",
             "*-- live log start --*",
             "*WARNING* >>>>> START >>>>>*",
             "*-- live log setup --*",
@@ -394,7 +394,7 @@ def test_live_logs_unknown_sections(testdir, request):
     result.stdout.fnmatch_lines(
         [
             "*WARNING*Unknown Section*",
-            "{}::test_log_1 ".format(filename),
+            f"{filename}::test_log_1 ",
             "*WARNING* >>>>> START >>>>>*",
             "*-- live log setup --*",
             "*WARNING*log message from setup of test_log_1*",
@@ -453,7 +453,7 @@ def test_sections_single_new_line_after_test_outcome(testdir, request):
     result = testdir.runpytest()
     result.stdout.fnmatch_lines(
         [
-            "{}::test_log_1 ".format(filename),
+            f"{filename}::test_log_1 ",
             "*-- live log start --*",
             "*WARNING* >>>>> START >>>>>*",
             "*-- live log setup --*",
@@ -638,7 +638,7 @@ def test_log_file_cli(testdir):
     log_file = testdir.tmpdir.join("pytest.log").strpath
 
     result = testdir.runpytest(
-        "-s", "--log-file={}".format(log_file), "--log-file-level=WARNING"
+        "-s", f"--log-file={log_file}", "--log-file-level=WARNING"
     )
 
     # fnmatch_lines does an assertion internally
@@ -670,9 +670,7 @@ def test_log_file_cli_level(testdir):
 
     log_file = testdir.tmpdir.join("pytest.log").strpath
 
-    result = testdir.runpytest(
-        "-s", "--log-file={}".format(log_file), "--log-file-level=INFO"
-    )
+    result = testdir.runpytest("-s", f"--log-file={log_file}", "--log-file-level=INFO")
 
     # fnmatch_lines does an assertion internally
     result.stdout.fnmatch_lines(["test_log_file_cli_level.py PASSED"])
@@ -891,7 +889,7 @@ def test_collection_collect_only_live_logging(testdir, verbose):
             [
                 "*collected 1 item*",
                 "*<Module test_collection_collect_only_live_logging.py>*",
-                "*no tests ran*",
+                "*1 test collected*",
             ]
         )
     elif verbose == "-q":
@@ -899,7 +897,7 @@ def test_collection_collect_only_live_logging(testdir, verbose):
         expected_lines.extend(
             [
                 "*test_collection_collect_only_live_logging.py::test_simple*",
-                "no tests ran in [0-1].[0-9][0-9]s",
+                "1 test collected in [0-9].[0-9][0-9]s",
             ]
         )
     elif verbose == "-qq":
@@ -1066,10 +1064,8 @@ def test_log_set_path(testdir):
 
 
 def test_colored_captured_log(testdir):
-    """
-    Test that the level names of captured log messages of a failing test are
-    colored.
-    """
+    """Test that the level names of captured log messages of a failing test
+    are colored."""
     testdir.makepyfile(
         """
         import logging
@@ -1092,9 +1088,7 @@ def test_colored_captured_log(testdir):
 
 
 def test_colored_ansi_esc_caplogtext(testdir):
-    """
-    Make sure that caplog.text does not contain ANSI escape sequences.
-    """
+    """Make sure that caplog.text does not contain ANSI escape sequences."""
     testdir.makepyfile(
         """
         import logging
@@ -1111,8 +1105,7 @@ def test_colored_ansi_esc_caplogtext(testdir):
 
 
 def test_logging_emit_error(testdir: Testdir) -> None:
-    """
-    An exception raised during emit() should fail the test.
+    """An exception raised during emit() should fail the test.
 
     The default behavior of logging is to print "Logging error"
     to stderr with the call stack and some extra details.
@@ -1138,10 +1131,8 @@ def test_logging_emit_error(testdir: Testdir) -> None:
 
 
 def test_logging_emit_error_supressed(testdir: Testdir) -> None:
-    """
-    If logging is configured to silently ignore errors, pytest
-    doesn't propagate errors either.
-    """
+    """If logging is configured to silently ignore errors, pytest
+    doesn't propagate errors either."""
     testdir.makepyfile(
         """
         import logging

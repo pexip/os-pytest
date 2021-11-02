@@ -7,6 +7,7 @@ import py
 
 import pytest
 from _pytest.config import ExitCode
+from _pytest.pytester import Pytester
 from _pytest.pytester import Testdir
 
 pytest_plugins = ("pytester",)
@@ -189,9 +190,7 @@ def test_cache_reportheader_external_abspath(testdir, tmpdir_factory):
         )
     )
     result = testdir.runpytest("-v")
-    result.stdout.fnmatch_lines(
-        ["cachedir: {abscache}".format(abscache=external_cache)]
-    )
+    result.stdout.fnmatch_lines([f"cachedir: {external_cache}"])
 
 
 def test_cache_show(testdir):
@@ -643,9 +642,7 @@ class TestLastFailed:
         return sorted(config.cache.get("cache/lastfailed", {}))
 
     def test_cache_cumulative(self, testdir):
-        """
-        Test workflow where user fixes errors gradually file by file using --lf.
-        """
+        """Test workflow where user fixes errors gradually file by file using --lf."""
         # 1. initial run
         test_bar = testdir.makepyfile(
             test_bar="""
@@ -912,7 +909,7 @@ class TestLastFailed:
                 "",
                 "<Module pkg1/test_1.py>",
                 "  <Function test_fail>",
-                "*= 1 deselected in *",
+                "*= 1/2 tests collected (1 deselected) in *",
             ],
         )
 
@@ -945,7 +942,7 @@ class TestLastFailed:
                 "      <Function test_fail>",
                 "  <Function test_other>",
                 "",
-                "*= 1 deselected in *",
+                "*= 2/3 tests collected (1 deselected) in *",
             ],
             consecutive=True,
         )
@@ -980,11 +977,41 @@ class TestLastFailed:
                 "<Module pkg1/test_1.py>",
                 "  <Function test_pass>",
                 "",
-                "*= no tests ran in*",
+                "*= 1 test collected in*",
             ],
             consecutive=True,
         )
         assert result.ret == 0
+
+    def test_packages(self, pytester: Pytester) -> None:
+        """Regression test for #7758.
+
+        The particular issue here was that Package nodes were included in the
+        filtering, being themselves Modules for the __init__.py, even if they
+        had failed Modules in them.
+
+        The tests includes a test in an __init__.py file just to make sure the
+        fix doesn't somehow regress that, it is not critical for the issue.
+        """
+        pytester.makepyfile(
+            **{
+                "__init__.py": "",
+                "a/__init__.py": "def test_a_init(): assert False",
+                "a/test_one.py": "def test_1(): assert False",
+                "b/__init__.py": "",
+                "b/test_two.py": "def test_2(): assert False",
+            },
+        )
+        pytester.makeini(
+            """
+            [pytest]
+            python_files = *.py
+            """
+        )
+        result = pytester.runpytest()
+        result.assert_outcomes(failed=3)
+        result = pytester.runpytest("--lf")
+        result.assert_outcomes(failed=3)
 
 
 class TestNewFirst:
@@ -1129,7 +1156,7 @@ def test_gitignore(testdir):
     from _pytest.cacheprovider import Cache
 
     config = testdir.parseconfig()
-    cache = Cache.for_config(config)
+    cache = Cache.for_config(config, _ispytest=True)
     cache.set("foo", "bar")
     msg = "# Created by pytest automatically.\n*\n"
     gitignore_path = cache._cachedir.joinpath(".gitignore")
@@ -1151,7 +1178,7 @@ def test_does_not_create_boilerplate_in_existing_dirs(testdir):
         """
     )
     config = testdir.parseconfig()
-    cache = Cache.for_config(config)
+    cache = Cache.for_config(config, _ispytest=True)
     cache.set("foo", "bar")
 
     assert os.path.isdir("v")  # cache contents
@@ -1165,7 +1192,7 @@ def test_cachedir_tag(testdir):
     from _pytest.cacheprovider import CACHEDIR_TAG_CONTENT
 
     config = testdir.parseconfig()
-    cache = Cache.for_config(config)
+    cache = Cache.for_config(config, _ispytest=True)
     cache.set("foo", "bar")
     cachedir_tag_path = cache._cachedir.joinpath("CACHEDIR.TAG")
     assert cachedir_tag_path.read_bytes() == CACHEDIR_TAG_CONTENT

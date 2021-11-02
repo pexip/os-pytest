@@ -1,4 +1,5 @@
 import operator
+import sys
 from decimal import Decimal
 from fractions import Fraction
 from operator import eq
@@ -6,6 +7,7 @@ from operator import ne
 from typing import Optional
 
 import pytest
+from _pytest.pytester import Pytester
 from pytest import approx
 
 inf, nan = float("inf"), float("nan")
@@ -329,6 +331,9 @@ class TestApprox:
         assert (1, 2) != approx((1,))
         assert (1, 2) != approx((1, 2, 3))
 
+    def test_tuple_vs_other(self):
+        assert 1 != approx((1,))
+
     def test_dict(self):
         actual = {"a": 1 + 1e-7, "b": 2 + 1e-8}
         # Dictionaries became ordered in python3.6, so switch up the order here
@@ -345,6 +350,13 @@ class TestApprox:
         assert {"a": 1, "b": 2} != approx({"a": 1})
         assert {"a": 1, "b": 2} != approx({"a": 1, "c": 2})
         assert {"a": 1, "b": 2} != approx({"a": 1, "b": 2, "c": 3})
+
+    def test_dict_nonnumeric(self):
+        assert {"a": 1.0, "b": None} == pytest.approx({"a": 1.0, "b": None})
+        assert {"a": 1.0, "b": 1} != pytest.approx({"a": 1.0, "b": None})
+
+    def test_dict_vs_other(self):
+        assert 1 != approx({"a": 0})
 
     def test_numpy_array(self):
         np = pytest.importorskip("numpy")
@@ -435,6 +447,36 @@ class TestApprox:
         assert a12 != approx(a21)
         assert a21 != approx(a12)
 
+    def test_numpy_array_protocol(self):
+        """
+        array-like objects such as tensorflow's DeviceArray are handled like ndarray.
+        See issue #8132
+        """
+        np = pytest.importorskip("numpy")
+
+        class DeviceArray:
+            def __init__(self, value, size):
+                self.value = value
+                self.size = size
+
+            def __array__(self):
+                return self.value * np.ones(self.size)
+
+        class DeviceScalar:
+            def __init__(self, value):
+                self.value = value
+
+            def __array__(self):
+                return np.array(self.value)
+
+        expected = 1
+        actual = 1 + 1e-6
+        assert approx(expected) == DeviceArray(actual, size=1)
+        assert approx(expected) == DeviceArray(actual, size=2)
+        assert approx(expected) == DeviceScalar(actual)
+        assert approx(DeviceScalar(expected)) == actual
+        assert approx(DeviceScalar(expected)) == DeviceScalar(actual)
+
     def test_doctests(self, mocked_doctest_runner) -> None:
         import doctest
 
@@ -445,12 +487,12 @@ class TestApprox:
         )
         mocked_doctest_runner.run(test)
 
-    def test_unicode_plus_minus(self, testdir):
+    def test_unicode_plus_minus(self, pytester: Pytester) -> None:
         """
         Comparing approx instances inside lists should not produce an error in the detailed diff.
         Integration test for issue #2111.
         """
-        testdir.makepyfile(
+        pytester.makepyfile(
             """
             import pytest
             def test_foo():
@@ -458,10 +500,23 @@ class TestApprox:
         """
         )
         expected = "4.0e-06"
-        result = testdir.runpytest()
+        result = pytester.runpytest()
         result.stdout.fnmatch_lines(
-            ["*At index 0 diff: 3 != 4 ± {}".format(expected), "=* 1 failed in *="]
+            [f"*At index 0 diff: 3 != 4 ± {expected}", "=* 1 failed in *="]
         )
+
+    @pytest.mark.parametrize(
+        "x, name",
+        [
+            pytest.param([[1]], "data structures", id="nested-list"),
+            pytest.param({"key": {"key": 1}}, "dictionaries", id="nested-dict"),
+        ],
+    )
+    def test_expected_value_type_error(self, x, name):
+        with pytest.raises(
+            TypeError, match=fr"pytest.approx\(\) does not support nested {name}:",
+        ):
+            approx(x)
 
     @pytest.mark.parametrize(
         "x",
@@ -469,14 +524,47 @@ class TestApprox:
             pytest.param(None),
             pytest.param("string"),
             pytest.param(["string"], id="nested-str"),
-            pytest.param([[1]], id="nested-list"),
             pytest.param({"key": "string"}, id="dict-with-string"),
-            pytest.param({"key": {"key": 1}}, id="nested-dict"),
         ],
     )
-    def test_expected_value_type_error(self, x):
-        with pytest.raises(TypeError):
-            approx(x)
+    def test_nonnumeric_okay_if_equal(self, x):
+        assert x == approx(x)
+
+    @pytest.mark.parametrize(
+        "x",
+        [
+            pytest.param("string"),
+            pytest.param(["string"], id="nested-str"),
+            pytest.param({"key": "string"}, id="dict-with-string"),
+        ],
+    )
+    def test_nonnumeric_false_if_unequal(self, x):
+        """For nonnumeric types, x != pytest.approx(y) reduces to x != y"""
+        assert "ab" != approx("abc")
+        assert ["ab"] != approx(["abc"])
+        # in particular, both of these should return False
+        assert {"a": 1.0} != approx({"a": None})
+        assert {"a": None} != approx({"a": 1.0})
+
+        assert 1.0 != approx(None)
+        assert None != approx(1.0)  # noqa: E711
+
+        assert 1.0 != approx([None])
+        assert None != approx([1.0])  # noqa: E711
+
+    @pytest.mark.skipif(sys.version_info < (3, 7), reason="requires ordered dicts")
+    def test_nonnumeric_dict_repr(self):
+        """Dicts with non-numerics and infinites have no tolerances"""
+        x1 = {"foo": 1.0000005, "bar": None, "foobar": inf}
+        assert (
+            repr(approx(x1))
+            == "approx({'foo': 1.0000005 ± 1.0e-06, 'bar': None, 'foobar': inf})"
+        )
+
+    def test_nonnumeric_list_repr(self):
+        """Lists with non-numerics and infinites have no tolerances"""
+        x1 = [1.0000005, None, inf]
+        assert repr(approx(x1)) == "approx([1.0000005 ± 1.0e-06, None, inf])"
 
     @pytest.mark.parametrize(
         "op",
@@ -488,9 +576,7 @@ class TestApprox:
         ],
     )
     def test_comparison_operator_type_error(self, op):
-        """
-        pytest.approx should raise TypeError for operators other than == and != (#2003).
-        """
+        """pytest.approx should raise TypeError for operators other than == and != (#2003)."""
         with pytest.raises(TypeError):
             op(1, approx(1, rel=1e-6, abs=1e-12))
 

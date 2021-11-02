@@ -157,18 +157,11 @@ class TestRaises:
 
     @pytest.mark.parametrize("method", ["function", "function_match", "with"])
     def test_raises_cyclic_reference(self, method):
-        """
-        Ensure pytest.raises does not leave a reference cycle (#1965).
-        """
+        """Ensure pytest.raises does not leave a reference cycle (#1965)."""
         import gc
 
         class T:
             def __call__(self):
-                # Early versions of Python 3.5 have some bug causing the
-                # __call__ frame to still refer to t even after everything
-                # is done. This makes the test pass for them.
-                if sys.version_info < (3, 5, 2):
-                    del self
                 raise ValueError
 
         t = T()
@@ -213,7 +206,7 @@ class TestRaises:
         pytest.raises(TypeError, int, match="invalid")
 
         def tfunc(match):
-            raise ValueError("match={}".format(match))
+            raise ValueError(f"match={match}")
 
         pytest.raises(ValueError, tfunc, match="asdf").match("match=asdf")
         pytest.raises(ValueError, tfunc, match="").match("match=")
@@ -283,3 +276,22 @@ class TestRaises:
             with pytest.raises(Exception, foo="bar"):  # type: ignore[call-overload]
                 pass
         assert "Unexpected keyword arguments" in str(excinfo.value)
+
+    def test_expected_exception_is_not_a_baseexception(self) -> None:
+        with pytest.raises(TypeError) as excinfo:
+            with pytest.raises("hello"):  # type: ignore[call-overload]
+                pass  # pragma: no cover
+        assert "must be a BaseException type, not str" in str(excinfo.value)
+
+        class NotAnException:
+            pass
+
+        with pytest.raises(TypeError) as excinfo:
+            with pytest.raises(NotAnException):  # type: ignore[type-var]
+                pass  # pragma: no cover
+        assert "must be a BaseException type, not NotAnException" in str(excinfo.value)
+
+        with pytest.raises(TypeError) as excinfo:
+            with pytest.raises(("hello", NotAnException)):  # type: ignore[arg-type]
+                pass  # pragma: no cover
+        assert "must be a BaseException type, not str" in str(excinfo.value)

@@ -1,3 +1,4 @@
+import importlib
 import io
 import operator
 import os
@@ -7,6 +8,7 @@ import textwrap
 from typing import Any
 from typing import Dict
 from typing import Tuple
+from typing import TYPE_CHECKING
 from typing import Union
 
 import py
@@ -17,15 +19,7 @@ from _pytest._code.code import ExceptionChainRepr
 from _pytest._code.code import ExceptionInfo
 from _pytest._code.code import FormattedExcinfo
 from _pytest._io import TerminalWriter
-from _pytest.compat import TYPE_CHECKING
 from _pytest.pytester import LineMatcher
-
-try:
-    import importlib
-except ImportError:
-    invalidate_import_caches = None
-else:
-    invalidate_import_caches = getattr(importlib, "invalidate_caches", None)
 
 if TYPE_CHECKING:
     from _pytest._code.code import _TracebackStyle
@@ -153,7 +147,7 @@ class TestTraceback_f_g_h:
         ]
 
     def test_traceback_cut(self):
-        co = _pytest._code.Code(f)
+        co = _pytest._code.Code.from_function(f)
         path, firstlineno = co.path, co.firstlineno
         traceback = self.excinfo.traceback
         newtraceback = traceback.cut(path=path, firstlineno=firstlineno)
@@ -206,8 +200,8 @@ class TestTraceback_f_g_h:
         excinfo = pytest.raises(ValueError, h)
         traceback = excinfo.traceback
         ntraceback = traceback.filter()
-        print("old: {!r}".format(traceback))
-        print("new: {!r}".format(ntraceback))
+        print(f"old: {traceback!r}")
+        print(f"new: {ntraceback!r}")
 
         if matching:
             assert len(ntraceback) == len(traceback) - 2
@@ -265,7 +259,7 @@ class TestTraceback_f_g_h:
         decorator = pytest.importorskip("decorator").decorator
 
         def log(f, *k, **kw):
-            print("{} {}".format(k, kw))
+            print(f"{k} {kw}")
             f(*k, **kw)
 
         log = decorator(log)
@@ -296,7 +290,7 @@ class TestTraceback_f_g_h:
         excinfo = pytest.raises(ValueError, f)
         tb = excinfo.traceback
         entry = tb.getcrashentry()
-        co = _pytest._code.Code(h)
+        co = _pytest._code.Code.from_function(h)
         assert entry.frame.code.path == co.path
         assert entry.lineno == co.firstlineno + 1
         assert entry.frame.code.name == "h"
@@ -313,7 +307,7 @@ class TestTraceback_f_g_h:
         excinfo = pytest.raises(ValueError, f)
         tb = excinfo.traceback
         entry = tb.getcrashentry()
-        co = _pytest._code.Code(g)
+        co = _pytest._code.Code.from_function(g)
         assert entry.frame.code.path == co.path
         assert entry.lineno == co.firstlineno + 2
         assert entry.frame.code.name == "g"
@@ -426,13 +420,13 @@ def test_match_raises_error(testdir):
     assert result.ret != 0
 
     exc_msg = "Regex pattern '[[]123[]]+' does not match 'division by zero'."
-    result.stdout.fnmatch_lines(["E * AssertionError: {}".format(exc_msg)])
+    result.stdout.fnmatch_lines([f"E * AssertionError: {exc_msg}"])
     result.stdout.no_fnmatch_line("*__tracebackhide__ = True*")
 
     result = testdir.runpytest("--fulltrace")
     assert result.ret != 0
     result.stdout.fnmatch_lines(
-        ["*__tracebackhide__ = True*", "E * AssertionError: {}".format(exc_msg)]
+        ["*__tracebackhide__ = True*", f"E * AssertionError: {exc_msg}"]
     )
 
 
@@ -445,8 +439,7 @@ class TestFormattedExcinfo:
             modpath = tmpdir.join("mod.py")
             tmpdir.ensure("__init__.py")
             modpath.write(source)
-            if invalidate_import_caches is not None:
-                invalidate_import_caches()
+            importlib.invalidate_caches()
             return modpath.pyimport()
 
         return importasmod
@@ -466,7 +459,7 @@ class TestFormattedExcinfo:
         assert lines[1] == "        pass"
 
     def test_repr_source_excinfo(self) -> None:
-        """ check if indentation is right """
+        """Check if indentation is right."""
         try:
 
             def f():
@@ -754,7 +747,6 @@ raise ValueError()
         from _pytest._code.code import Code
 
         monkeypatch.setattr(Code, "path", "bogus")
-        excinfo.traceback[0].frame.code.path = "bogus"  # type: ignore[misc]
         p = FormattedExcinfo(style="short")
         reprtb = p.repr_traceback_entry(excinfo.traceback[-2])
         lines = reprtb.lines
@@ -778,7 +770,7 @@ raise ValueError()
         )
         excinfo = pytest.raises(ValueError, mod.entry)
 
-        styles = ("long", "short")  # type: Tuple[_TracebackStyle, ...]
+        styles: Tuple[_TracebackStyle, ...] = ("long", "short")
         for style in styles:
             p = FormattedExcinfo(style=style)
             reprtb = p.repr_traceback(excinfo)
@@ -834,14 +826,14 @@ raise ValueError()
                 "def entry():",
                 ">       f(0)",
                 "",
-                "{}:5: ".format(mod.__file__),
+                f"{mod.__file__}:5: ",
                 "_ _ *",
                 "",
                 "    def f(x):",
                 ">       raise ValueError(x)",
                 "E       ValueError: 0",
                 "",
-                "{}:3: ValueError".format(mod.__file__),
+                f"{mod.__file__}:3: ValueError",
             ]
         )
         assert raised == 3
@@ -905,7 +897,7 @@ raise ValueError()
         )
         excinfo = pytest.raises(ValueError, mod.entry)
 
-        styles = ("short", "long", "no")  # type: Tuple[_TracebackStyle, ...]
+        styles: Tuple[_TracebackStyle, ...] = ("short", "long", "no")
         for style in styles:
             for showlocals in (True, False):
                 repr = excinfo.getrepr(style=style, showlocals=showlocals)
@@ -1352,12 +1344,25 @@ raise ValueError()
         )
         assert out == expected_out
 
+    def test_exec_type_error_filter(self, importasmod):
+        """See #7742"""
+        mod = importasmod(
+            """\
+            def f():
+                exec("a = 1", {}, [])
+            """
+        )
+        with pytest.raises(TypeError) as excinfo:
+            mod.f()
+        # previously crashed with `AttributeError: list has no attribute get`
+        excinfo.traceback.filter()
+
 
 @pytest.mark.parametrize("style", ["short", "long"])
 @pytest.mark.parametrize("encoding", [None, "utf8", "utf16"])
 def test_repr_traceback_with_unicode(style, encoding):
     if encoding is None:
-        msg = "☹"  # type: Union[str, bytes]
+        msg: Union[str, bytes] = "☹"
     else:
         msg = "☹".encode(encoding)
     try:

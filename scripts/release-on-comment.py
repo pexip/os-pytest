@@ -2,8 +2,8 @@
 This script is part of the pytest release process which is triggered by comments
 in issues.
 
-This script is started by the `release-on-comment.yml` workflow, which is triggered by two comment
-related events:
+This script is started by the `release-on-comment.yml` workflow, which always executes on
+`master` and is triggered by two comment related events:
 
 * https://help.github.com/en/actions/reference/events-that-trigger-workflows#issue-comment-event-issue_comment
 * https://help.github.com/en/actions/reference/events-that-trigger-workflows#issues-event-issues
@@ -23,14 +23,14 @@ Then the appropriate version will be obtained based on the given branch name:
 
 After that, it will create a release using the `release` tox environment, and push a new PR.
 
-**Secret**: currently the secret is defined in the @pytestbot account, which the core maintainers
-have access to. There we created a new secret named `chatops` with write access to the repository.
+**Token**: currently the token from the GitHub Actions is used, pushed with
+`pytest bot <pytestbot@gmail.com>` commit author.
 """
 import argparse
 import json
 import os
 import re
-import sys
+import traceback
 from pathlib import Path
 from subprocess import CalledProcessError
 from subprocess import check_call
@@ -57,6 +57,8 @@ Created automatically from {comment_url}.
 
 Once all builds pass and it has been **approved** by one or more maintainers, the build
 can be released by pushing a tag `{version}` to this repository.
+
+Closes #{issue_number}.
 """
 
 
@@ -94,7 +96,6 @@ def print_and_exit(msg) -> None:
 
 
 def trigger_release(payload_path: Path, token: str) -> None:
-    error_contents = ""  # to be used to store error output in case any command fails
     payload, base_branch, is_major = validate_and_get_issue_comment_payload(
         payload_path
     )
@@ -119,6 +120,7 @@ def trigger_release(payload_path: Path, token: str) -> None:
         issue.create_comment(str(e))
         print_and_exit(f"{Fore.RED}{e}")
 
+    error_contents = ""
     try:
         print(f"Version: {Fore.CYAN}{version}")
 
@@ -146,11 +148,12 @@ def trigger_release(payload_path: Path, token: str) -> None:
 
         print(f"Branch {Fore.CYAN}{release_branch}{Fore.RESET} created.")
 
+        # important to use tox here because we have changed branches, so dependencies
+        # might have changed as well
+        cmdline = ["tox", "-e", "release", "--", version, "--skip-check-links"]
+        print("Running", " ".join(cmdline))
         run(
-            [sys.executable, "scripts/release.py", version, "--skip-check-links"],
-            text=True,
-            check=True,
-            capture_output=True,
+            cmdline, text=True, check=True, capture_output=True,
         )
 
         oauth_url = f"https://{token}:x-oauth-basic@github.com/{SLUG}.git"
@@ -163,7 +166,9 @@ def trigger_release(payload_path: Path, token: str) -> None:
         print(f"Branch {Fore.CYAN}{release_branch}{Fore.RESET} pushed.")
 
         body = PR_BODY.format(
-            comment_url=get_comment_data(payload)["html_url"], version=version
+            comment_url=get_comment_data(payload)["html_url"],
+            version=version,
+            issue_number=issue_number,
         )
         pr = repo.create_pull(
             f"Prepare release {version}",
@@ -178,43 +183,31 @@ def trigger_release(payload_path: Path, token: str) -> None:
         )
         print(f"Notified in original comment {Fore.CYAN}{comment.url}{Fore.RESET}.")
 
-        print(f"{Fore.GREEN}Success.")
     except CalledProcessError as e:
-        error_contents = e.output
-    except Exception as e:
-        error_contents = str(e)
-        link = f"https://github.com/{SLUG}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
-        issue.create_comment(
-            dedent(
-                f"""
-            Sorry, the request to prepare release `{version}` from {base_branch} failed with:
-
-            ```
-            {e}
-            ```
-
-            See: {link}.
-            """
-            )
-        )
-        print_and_exit(f"{Fore.RED}{e}")
+        error_contents = f"CalledProcessError\noutput:\n{e.output}\nstderr:\n{e.stderr}"
+    except Exception:
+        error_contents = f"Exception:\n{traceback.format_exc()}"
 
     if error_contents:
         link = f"https://github.com/{SLUG}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
-        issue.create_comment(
-            dedent(
-                f"""
-                Sorry, the request to prepare release `{version}` from {base_branch} failed with:
-
-                ```
-                {error_contents}
-                ```
-
-                See: {link}.
-                """
-            )
+        msg = ERROR_COMMENT.format(
+            version=version, base_branch=base_branch, contents=error_contents, link=link
         )
+        issue.create_comment(msg)
         print_and_exit(f"{Fore.RED}{error_contents}")
+    else:
+        print(f"{Fore.GREEN}Success.")
+
+
+ERROR_COMMENT = """\
+The request to prepare release `{version}` from {base_branch} failed with:
+
+```
+{contents}
+```
+
+See: {link}.
+"""
 
 
 def find_next_version(base_branch: str, is_major: bool) -> str:
@@ -238,7 +231,7 @@ def find_next_version(base_branch: str, is_major: bool) -> str:
         msg = dedent(
             f"""
             Found features or breaking changes in `{base_branch}`, and feature releases can only be
-            created from `master`.":
+            created from `master`:
         """
         )
         msg += "\n".join(f"* `{x.name}`" for x in sorted(features + breaking))

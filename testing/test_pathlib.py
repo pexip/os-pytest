@@ -1,11 +1,15 @@
 import os.path
 import sys
 import unittest.mock
+from pathlib import Path
 from textwrap import dedent
 
 import py
 
 import pytest
+from _pytest.monkeypatch import MonkeyPatch
+from _pytest.pathlib import bestrelpath
+from _pytest.pathlib import commonpath
 from _pytest.pathlib import ensure_deletable
 from _pytest.pathlib import fnmatch_ex
 from _pytest.pathlib import get_extended_length_path_str
@@ -13,14 +17,14 @@ from _pytest.pathlib import get_lock_path
 from _pytest.pathlib import import_path
 from _pytest.pathlib import ImportPathMismatchError
 from _pytest.pathlib import maybe_delete_a_numbered_dir
-from _pytest.pathlib import Path
 from _pytest.pathlib import resolve_package_path
+from _pytest.pathlib import symlink_or_skip
+from _pytest.pathlib import visit
 
 
 class TestFNMatcherPort:
-    """Test that our port of py.common.FNMatcher (fnmatch_ex) produces the same results as the
-    original py.path.local.fnmatch method.
-    """
+    """Test that our port of py.common.FNMatcher (fnmatch_ex) produces the
+    same results as the original py.path.local.fnmatch method."""
 
     @pytest.fixture(params=["pathlib", "py.path"])
     def match(self, request):
@@ -268,19 +272,19 @@ class TestImportPath:
         return fn
 
     def test_importmode_importlib(self, simple_module):
-        """importlib mode does not change sys.path"""
+        """`importlib` mode does not change sys.path."""
         module = import_path(simple_module, mode="importlib")
         assert module.foo(2) == 42  # type: ignore[attr-defined]
         assert simple_module.dirname not in sys.path
 
     def test_importmode_twice_is_different_module(self, simple_module):
-        """importlib mode always returns a new module"""
+        """`importlib` mode always returns a new module."""
         module1 = import_path(simple_module, mode="importlib")
         module2 = import_path(simple_module, mode="importlib")
         assert module1 is not module2
 
     def test_no_meta_path_found(self, simple_module, monkeypatch):
-        """Even without any meta_path should still import module"""
+        """Even without any meta_path should still import module."""
         monkeypatch.setattr(sys, "meta_path", [])
         module = import_path(simple_module, mode="importlib")
         assert module.foo(2) == 42  # type: ignore[attr-defined]
@@ -382,3 +386,52 @@ def test_suppress_error_removing_lock(tmp_path):
     # check now that we can remove the lock file in normal circumstances
     assert ensure_deletable(path, consider_lock_dead_if_created_before=mtime + 30)
     assert not lock.is_file()
+
+
+def test_bestrelpath() -> None:
+    curdir = Path("/foo/bar/baz/path")
+    assert bestrelpath(curdir, curdir) == "."
+    assert bestrelpath(curdir, curdir / "hello" / "world") == "hello" + os.sep + "world"
+    assert bestrelpath(curdir, curdir.parent / "sister") == ".." + os.sep + "sister"
+    assert bestrelpath(curdir, curdir.parent) == ".."
+    assert bestrelpath(curdir, Path("hello")) == "hello"
+
+
+def test_commonpath() -> None:
+    path = Path("/foo/bar/baz/path")
+    subpath = path / "sampledir"
+    assert commonpath(path, subpath) == path
+    assert commonpath(subpath, path) == path
+    assert commonpath(Path(str(path) + "suffix"), path) == path.parent
+    assert commonpath(path, path.parent.parent) == path.parent.parent
+
+
+def test_visit_ignores_errors(tmpdir) -> None:
+    symlink_or_skip("recursive", tmpdir.join("recursive"))
+    tmpdir.join("foo").write_binary(b"")
+    tmpdir.join("bar").write_binary(b"")
+
+    assert [entry.name for entry in visit(tmpdir, recurse=lambda entry: False)] == [
+        "bar",
+        "foo",
+    ]
+
+
+@pytest.mark.skipif(not sys.platform.startswith("win"), reason="Windows only")
+def test_samefile_false_negatives(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    """
+    import_file() should not raise ImportPathMismatchError if the paths are exactly
+    equal on Windows. It seems directories mounted as UNC paths make os.path.samefile
+    return False, even when they are clearly equal.
+    """
+    module_path = tmp_path.joinpath("my_module.py")
+    module_path.write_text("def foo(): return 42")
+    monkeypatch.syspath_prepend(tmp_path)
+
+    with monkeypatch.context() as mp:
+        # Forcibly make os.path.samefile() return False here to ensure we are comparing
+        # the paths too. Using a context to narrow the patch as much as possible given
+        # this is an important system function.
+        mp.setattr(os.path, "samefile", lambda x, y: False)
+        module = import_path(module_path)
+    assert getattr(module, "foo")() == 42

@@ -1,3 +1,1 @@
-debian/py.test.1
-debian/py.test-3.1
-debian/pypy.test.1
+debian/*.1

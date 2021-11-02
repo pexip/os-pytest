@@ -30,14 +30,14 @@ and does not handle Deferreds returned from a test in pytest style.
 If you are using trial's unittest.TestCase chances are that you can
 just run your tests even if you return Deferreds.  In addition,
 there also is a dedicated `pytest-twisted
-<http://pypi.python.org/pypi/pytest-twisted>`_ plugin which allows you to
+<https://pypi.org/project/pytest-twisted/>`_ plugin which allows you to
 return deferreds from pytest-style tests, allowing the use of
-:ref:`fixtures` and other features.
+:ref:`fixtures <fixtures>` and other features.
 
 how does pytest work with Django?
 ++++++++++++++++++++++++++++++++++++++++++++++
 
-In 2012, some work is going into the `pytest-django plugin <http://pypi.python.org/pypi/pytest-django>`_.  It substitutes the usage of Django's
+In 2012, some work is going into the `pytest-django plugin <https://pypi.org/project/pytest-django/>`_.  It substitutes the usage of Django's
 ``manage.py test`` and allows the use of all pytest features_ most of which
 are not available from Django directly.
 
@@ -65,14 +65,6 @@ in order to provide more useful :ref:`assert feedback <assertfeedback>`.
 This completely avoids previous issues of confusing assertion-reporting.
 It also means, that you can use Python's ``-O`` optimization without losing
 assertions in test modules.
-
-``pytest`` contains a second, mostly obsolete, assert debugging technique
-invoked via ``--assert=reinterpret``: When an ``assert`` statement fails, ``pytest`` re-interprets
-the expression part to show intermediate values.  This technique suffers
-from a caveat that the rewriting does not: If your expression has side
-effects (better to avoid them anyway!) the intermediate values may not
-be the same, confusing the reinterpreter and obfuscating the initial
-error (this is also explained at the command line if it happens).
 
 You can also turn off all assertion interaction using the
 ``--assert=plain`` option.
@@ -161,4 +153,6 @@ As of mid-2013, there shouldn't be a problem anymore when you
 use the standard setuptools (note that distribute has been merged
 back into setuptools which is now shipped directly with virtualenv).
 
-.. include:: links.inc
+.. _nose: https://nose.readthedocs.io/en/latest/
+.. _pylib: https://py.readthedocs.io/en/latest/
+.. _`xUnit style setup`: xunit_setup.html

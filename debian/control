@@ -2,8 +2,6 @@ Source: pytest
 Section: python
 Priority: optional
 Maintainer: Pexip AS <packaging@pexip.com>
-Uploaders:
- Pexip AS <packaging@pexip.com>,
 XSBC-Pexip-Original-Maintainer: Debian Python Team <team+python@tracker.debian.org>
 XSBC-Pexip-Original-Uploaders:
  Ondřej Nový <onovy@debian.org>,
@@ -24,13 +22,12 @@ Build-Depends:
  python3-packaging,
  python3-pluggy (>= 0.12),
  python3-pluggy (<< 1.0),
- python3-py (>= 1.5.0),
+ python3-py (>= 1.8.2),
  python3-pygments <!nocheck>,
  python3-requests <!nocheck>,
  python3-setuptools (>= 40.0),
  python3-setuptools-scm,
  python3-six,
- python3-sphinx (>= 1.0.7+dfsg),
  python3-toml,
  python3-pallets-sphinx-themes,
  python3-twisted <!nocheck>,
@@ -43,23 +40,6 @@ Vcs-Browser: https://salsa.debian.org/python-team/packages/pytest
 Rules-Requires-Root: no
 XS-Pexip-Upstream: http://ftp.debian.org/debian/ bullseye
 
-Package: python-pytest-doc
-Section: doc
-Architecture: all
-Depends:
- ${misc:Depends},
- ${sphinxdoc:Depends},
-Recommends:
- python3-pytest,
-Built-Using:
- ${sphinxdoc:Built-Using},
-Description: Simple, powerful testing in Python - Documentation
- This testing tool has for objective to allow the developers to limit the
- boilerplate code around the tests, promoting the use of built-in
- mechanisms such as the `assert` keyword.
- .
- This package contains the documentation for pytest.
-
 Package: python3-pytest
 Architecture: all
 Depends:
@@ -67,7 +47,7 @@ Depends:
  python3-more-itertools,
  python3-pkg-resources,
  python3-pluggy (>= 0.12),
- python3-py (>= 1.5.0),
+ python3-py (>= 1.8.2),
  ${misc:Depends},
  ${python3:Depends},
 Recommends:

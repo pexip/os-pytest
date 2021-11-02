@@ -14,14 +14,7 @@ export PYBUILD_TEST_ARGS=\
 		{dir}/testing
 
 %:
-	dh $@ --with python3,sphinxdoc --buildsystem=pybuild
-
-override_dh_auto_build:
-	dh_auto_build
-	PYTHONPATH=$(CURDIR)/src \
-		SPHINXBUILD=/usr/share/sphinx/scripts/python3/sphinx-build \
-		$(MAKE) -C doc/en man html
-	sed 's/PYTEST/PYTEST-3/g' doc/en/_build/man/pytest.1 > debian/pytest-3.1
+	dh $@ --with python3 --buildsystem=pybuild
 
 # 2015-12-16 barry@debian.org: Because pytest does not clean up after itself,
 # use a custom temporary directory (which is easier to clean up manually,
@@ -36,7 +29,3 @@ override_dh_auto_install:
 	rm debian/python3-pytest/usr/bin/py.test
 	mv debian/python3-pytest/usr/bin/pytest \
 		debian/python3-pytest/usr/bin/pytest-3
-
-override_dh_auto_clean:
-	rm -rf doc/en/_build
-	dh_auto_clean

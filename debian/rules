@@ -1,0 +1,35 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+
+export PYBUILD_NAME=pytest
+
+export PYBUILD_BEFORE_TEST=mkdir -p {dir}/debian/tmp/test-working-directory
+export PYBUILD_AFTER_TEST=rm -rf {dir}/debian/tmp/test-working-directory
+export PYBUILD_TEST_ARGS=\
+	cd {dir}/debian/tmp/test-working-directory && \
+	{interpreter} -m pytest --lsof -rfsxX \
+		--ignore={dir}/testing/test_entry_points.py \
+		--ignore={dir}/testing/test_terminal.py \
+		-k 'not test_code_highlight' \
+		{dir}/testing
+
+%:
+	dh $@ --with python3,sphinxdoc --buildsystem=pybuild
+
+override_dh_auto_build:
+	dh_auto_build
+	PYTHONPATH=$(CURDIR)/src \
+		SPHINXBUILD=/usr/share/sphinx/scripts/python3/sphinx-build \
+		$(MAKE) -C doc/en man html
+
+# 2015-12-16 barry@debian.org: Because pytest does not clean up after itself,
+# use a custom temporary directory (which is easier to clean up manually,
+# e.g. in an sbuild).
+override_dh_auto_test:
+ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
+	dh_auto_test -- --system=custom
+endif
+
+override_dh_auto_clean:
+	rm -rf doc/en/_build
+	dh_auto_clean

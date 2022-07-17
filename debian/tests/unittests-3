@@ -1,0 +1,13 @@
+#!/bin/sh
+
+SRCDIR="$PWD"
+
+cd "$AUTOPKGTEST_TMP"
+
+for py in $(py3versions -s); do
+    TMPDIR="$AUTOPKGTEST_TMP" $py -m pytest --lsof -rfsxX \
+		--ignore="$SRCDIR/testing/test_entry_points.py" \
+		--ignore="$SRCDIR/testing/test_terminal.py" \
+		-k "not test_code_highlight" \
+		"$SRCDIR/testing"
+done

@@ -1,0 +1,18 @@
+From: =?utf-8?b?T25kxZllaiBOb3bDvQ==?= <onovy@debian.org>
+Date: Fri, 15 Jun 2018 13:43:56 +0200
+Subject: Drop sphinxcontrib_trio extension
+
+---
+ doc/en/conf.py | 1 -
+ 1 file changed, 1 deletion(-)
+
+--- a/doc/en/conf.py
++++ b/doc/en/conf.py
+@@ -74,7 +74,6 @@ extensions = [
+     "sphinx.ext.todo",
+     "sphinx.ext.viewcode",
+     "sphinx_removed_in",
+-    "sphinxcontrib_trio",
+ ]
+ 
+ # Building PDF docs on readthedocs requires inkscape for svg to pdf

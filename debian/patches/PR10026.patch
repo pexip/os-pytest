@@ -1,0 +1,24 @@
+From fe2c74cb1aaba82a1bc085005ba39e0c6beb0748 Mon Sep 17 00:00:00 2001
+From: Sandro Tosi <sandrotosi@users.noreply.github.com>
+Date: Tue, 7 Jun 2022 14:43:34 -0400
+Subject: [PATCH] Update location of `usage.rst` to fix manpage compilation
+
+`usage.rst` has been moved from `doc/en` to `doc/en/how-to`, so the `man_pages` configuration
+value needs to be updated to the new location, so that we dont get this warning:
+
+    writing... WARNING: "man_pages" config value references unknown document usage
+---
+ doc/en/conf.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--- a/doc/en/conf.py
++++ b/doc/en/conf.py
+@@ -317,7 +317,7 @@ latex_domain_indices = False
+ 
+ # One entry per manual page. List of tuples
+ # (source start file, name, description, authors, manual section).
+-man_pages = [("usage", "pytest", "pytest usage", ["holger krekel at merlinux eu"], 1)]
++man_pages = [("how-to/usage", "pytest", "pytest usage", ["holger krekel at merlinux eu"], 1)]
+ 
+ 
+ # -- Options for Epub output ---------------------------------------------------

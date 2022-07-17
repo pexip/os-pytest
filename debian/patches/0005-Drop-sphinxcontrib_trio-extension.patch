@@ -6,15 +6,13 @@ Subject: Drop sphinxcontrib_trio extension
  doc/en/conf.py | 1 -
  1 file changed, 1 deletion(-)
 
-diff --git a/doc/en/conf.py b/doc/en/conf.py
-index 3eec549..ec38935 100644
 --- a/doc/en/conf.py
 +++ b/doc/en/conf.py
-@@ -51,7 +51,6 @@ extensions = [
+@@ -74,7 +74,6 @@ extensions = [
      "sphinx.ext.todo",
      "sphinx.ext.viewcode",
      "sphinx_removed_in",
 -    "sphinxcontrib_trio",
  ]
  
- # Add any paths that contain templates here, relative to this directory.
+ # Building PDF docs on readthedocs requires inkscape for svg to pdf

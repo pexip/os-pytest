@@ -1,23 +1,20 @@
 # flake8: noqa
 # disable flake check on this file because some constructs are strange
 # or redundant on purpose and can't be disable on a line-by-line basis
-import ast
 import inspect
 import linecache
 import sys
 import textwrap
-from types import CodeType
+from pathlib import Path
 from typing import Any
 from typing import Dict
-from typing import Optional
-
-import py.path
 
 import pytest
 from _pytest._code import Code
 from _pytest._code import Frame
 from _pytest._code import getfslineno
 from _pytest._code import Source
+from _pytest.pathlib import import_path
 
 
 def test_source_str_function() -> None:
@@ -286,7 +283,7 @@ def test_deindent() -> None:
     assert lines == ["def f():", "    def g():", "        pass"]
 
 
-def test_source_of_class_at_eof_without_newline(tmpdir, _sys_snapshot) -> None:
+def test_source_of_class_at_eof_without_newline(_sys_snapshot, tmp_path: Path) -> None:
     # this test fails because the implicit inspect.getsource(A) below
     # does not return the "x = 1" last line.
     source = Source(
@@ -296,9 +293,10 @@ def test_source_of_class_at_eof_without_newline(tmpdir, _sys_snapshot) -> None:
                 x = 1
     """
     )
-    path = tmpdir.join("a.py")
-    path.write(source)
-    s2 = Source(tmpdir.join("a.py").pyimport().A)
+    path = tmp_path.joinpath("a.py")
+    path.write_text(str(source))
+    mod: Any = import_path(path, root=tmp_path)
+    s2 = Source(mod.A)
     assert str(source).strip() == str(s2).strip()
 
 
@@ -331,8 +329,7 @@ def test_findsource(monkeypatch) -> None:
     lines = ["if 1:\n", "    def x():\n", "          pass\n"]
     co = compile("".join(lines), filename, "exec")
 
-    # Type ignored because linecache.cache is private.
-    monkeypatch.setitem(linecache.cache, filename, (1, None, lines, filename))  # type: ignore[attr-defined]
+    monkeypatch.setitem(linecache.cache, filename, (1, None, lines, filename))
 
     src, lineno = findsource(co)
     assert src is not None
@@ -352,8 +349,8 @@ def test_getfslineno() -> None:
 
     fspath, lineno = getfslineno(f)
 
-    assert isinstance(fspath, py.path.local)
-    assert fspath.basename == "test_source.py"
+    assert isinstance(fspath, Path)
+    assert fspath.name == "test_source.py"
     assert lineno == f.__code__.co_firstlineno - 1  # see findsource
 
     class A:
@@ -362,8 +359,8 @@ def test_getfslineno() -> None:
     fspath, lineno = getfslineno(A)
 
     _, A_lineno = inspect.findsource(A)
-    assert isinstance(fspath, py.path.local)
-    assert fspath.basename == "test_source.py"
+    assert isinstance(fspath, Path)
+    assert fspath.name == "test_source.py"
     assert lineno == A_lineno
 
     assert getfslineno(3) == ("", -1)
@@ -483,7 +480,7 @@ def test_source_with_decorator() -> None:
 
     src = inspect.getsource(deco_fixture)
     assert src == "    @pytest.fixture\n    def deco_fixture():\n        assert False\n"
-    # currenly Source does not unwrap decorators, testing the
+    # currently Source does not unwrap decorators, testing the
     # existing behavior here for explicitness, but perhaps we should revisit/change this
     # in the future
     assert str(Source(deco_fixture)).startswith("@functools.wraps(function)")
@@ -615,6 +612,19 @@ def something():
 """
     source = getstatement(0, s)
     assert str(source) == "def func(): raise ValueError(42)"
+
+
+def test_decorator() -> None:
+    s = """\
+def foo(f):
+    pass
+
+@foo
+def bar():
+    pass
+    """
+    source = getstatement(3, s)
+    assert "@foo" in str(source)
 
 
 def XXX_test_expression_multiline() -> None:

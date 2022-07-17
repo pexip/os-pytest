@@ -12,7 +12,6 @@ from typing import List
 from typing import Tuple
 
 import pluggy
-import py
 
 import _pytest.config
 import _pytest.terminal
@@ -133,7 +132,7 @@ class TestTerminal:
         item.config.pluginmanager.register(tr)
         location = item.reportinfo()
         tr.config.hook.pytest_runtest_logstart(
-            nodeid=item.nodeid, location=location, fspath=str(item.fspath)
+            nodeid=item.nodeid, location=location, fspath=str(item.path)
         )
         linecomp.assert_contains_lines(["*test_show_runtest_logstart.py*"])
 
@@ -386,21 +385,55 @@ class TestTerminal:
 
             def test_10():
                 pytest.xfail("It's 🕙 o'clock")
+
+            @pytest.mark.skip(
+                reason="cannot do foobar because baz is missing due to I don't know what"
+            )
+            def test_long_skip():
+                pass
+
+            @pytest.mark.xfail(
+                reason="cannot do foobar because baz is missing due to I don't know what"
+            )
+            def test_long_xfail():
+                print(1 / 0)
         """
         )
+
+        common_output = [
+            "test_verbose_skip_reason.py::test_1 SKIPPED (123) *",
+            "test_verbose_skip_reason.py::test_2 XPASS (456) *",
+            "test_verbose_skip_reason.py::test_3 XFAIL (789) *",
+            "test_verbose_skip_reason.py::test_4 XFAIL  *",
+            "test_verbose_skip_reason.py::test_5 SKIPPED (unconditional skip) *",
+            "test_verbose_skip_reason.py::test_6 XPASS  *",
+            "test_verbose_skip_reason.py::test_7 SKIPPED  *",
+            "test_verbose_skip_reason.py::test_8 SKIPPED (888 is great) *",
+            "test_verbose_skip_reason.py::test_9 XFAIL  *",
+            "test_verbose_skip_reason.py::test_10 XFAIL (It's 🕙 o'clock) *",
+        ]
+
         result = pytester.runpytest("-v")
         result.stdout.fnmatch_lines(
-            [
-                "test_verbose_skip_reason.py::test_1 SKIPPED (123) *",
-                "test_verbose_skip_reason.py::test_2 XPASS (456) *",
-                "test_verbose_skip_reason.py::test_3 XFAIL (789) *",
-                "test_verbose_skip_reason.py::test_4 XFAIL  *",
-                "test_verbose_skip_reason.py::test_5 SKIPPED (unconditional skip) *",
-                "test_verbose_skip_reason.py::test_6 XPASS  *",
-                "test_verbose_skip_reason.py::test_7 SKIPPED  *",
-                "test_verbose_skip_reason.py::test_8 SKIPPED (888 is great) *",
-                "test_verbose_skip_reason.py::test_9 XFAIL  *",
-                "test_verbose_skip_reason.py::test_10 XFAIL (It's 🕙 o'clock) *",
+            common_output
+            + [
+                "test_verbose_skip_reason.py::test_long_skip SKIPPED (cannot *...) *",
+                "test_verbose_skip_reason.py::test_long_xfail XFAIL (cannot *...) *",
+            ]
+        )
+
+        result = pytester.runpytest("-vv")
+        result.stdout.fnmatch_lines(
+            common_output
+            + [
+                (
+                    "test_verbose_skip_reason.py::test_long_skip SKIPPED"
+                    " (cannot do foobar because baz is missing due to I don't know what) *"
+                ),
+                (
+                    "test_verbose_skip_reason.py::test_long_xfail XFAIL"
+                    " (cannot do foobar because baz is missing due to I don't know what) *"
+                ),
             ]
         )
 
@@ -683,7 +716,7 @@ class TestTerminalFunctional:
                     pass
            """
         )
-        result = pytester.runpytest("-k", "test_two:", testpath)
+        result = pytester.runpytest("-k", "test_t", testpath)
         result.stdout.fnmatch_lines(
             ["collected 3 items / 1 deselected / 2 selected", "*test_deselected.py ..*"]
         )
@@ -750,6 +783,33 @@ class TestTerminalFunctional:
         result.stdout.no_fnmatch_line("*= 1 deselected =*")
         assert result.ret == 0
 
+    def test_selected_count_with_error(self, pytester: Pytester) -> None:
+        pytester.makepyfile(
+            test_selected_count_3="""
+                def test_one():
+                    pass
+                def test_two():
+                    pass
+                def test_three():
+                    pass
+            """,
+            test_selected_count_error="""
+                5/0
+                def test_foo():
+                    pass
+                def test_bar():
+                    pass
+            """,
+        )
+        result = pytester.runpytest("-k", "test_t")
+        result.stdout.fnmatch_lines(
+            [
+                "collected 3 items / 1 error / 1 deselected / 2 selected",
+                "* ERROR collecting test_selected_count_error.py *",
+            ]
+        )
+        assert result.ret == ExitCode.INTERRUPTED
+
     def test_no_skip_summary_if_failure(self, pytester: Pytester) -> None:
         pytester.makepyfile(
             """
@@ -800,12 +860,11 @@ class TestTerminalFunctional:
         result.stdout.fnmatch_lines(
             [
                 "*===== test session starts ====*",
-                "platform %s -- Python %s*pytest-%s*py-%s*pluggy-%s"
+                "platform %s -- Python %s*pytest-%s**pluggy-%s"
                 % (
                     sys.platform,
                     verinfo,
                     pytest.__version__,
-                    py.__version__,
                     pluggy.__version__,
                 ),
                 "*test_header_trailer_info.py .*",
@@ -828,12 +887,11 @@ class TestTerminalFunctional:
         result = pytester.runpytest("--no-header")
         verinfo = ".".join(map(str, sys.version_info[:3]))
         result.stdout.no_fnmatch_line(
-            "platform %s -- Python %s*pytest-%s*py-%s*pluggy-%s"
+            "platform %s -- Python %s*pytest-%s**pluggy-%s"
             % (
                 sys.platform,
                 verinfo,
                 pytest.__version__,
-                py.__version__,
                 pluggy.__version__,
             )
         )
@@ -1036,8 +1094,8 @@ class TestTerminalFunctional:
     def test_report_collectionfinish_hook(self, pytester: Pytester, params) -> None:
         pytester.makeconftest(
             """
-            def pytest_report_collectionfinish(config, startdir, items):
-                return ['hello from hook: {0} items'.format(len(items))]
+            def pytest_report_collectionfinish(config, start_path, items):
+                return [f'hello from hook: {len(items)} items']
         """
         )
         pytester.makepyfile(
@@ -1462,8 +1520,8 @@ class TestGenericReporting:
         )
         pytester.mkdir("a").joinpath("conftest.py").write_text(
             """
-def pytest_report_header(config, startdir):
-    return ["line1", str(startdir)]
+def pytest_report_header(config, start_path):
+    return ["line1", str(start_path)]
 """
         )
         result = pytester.runpytest("a")
@@ -2230,19 +2288,19 @@ def test_skip_reasons_folding() -> None:
 
     ev1 = cast(CollectReport, X())
     ev1.when = "execute"
-    ev1.skipped = True
+    ev1.skipped = True  # type: ignore[misc]
     ev1.longrepr = longrepr
 
     ev2 = cast(CollectReport, X())
     ev2.when = "execute"
     ev2.longrepr = longrepr
-    ev2.skipped = True
+    ev2.skipped = True  # type: ignore[misc]
 
     # ev3 might be a collection report
     ev3 = cast(CollectReport, X())
     ev3.when = "collect"
     ev3.longrepr = longrepr
-    ev3.skipped = True
+    ev3.skipped = True  # type: ignore[misc]
 
     values = _folded_skips(Path.cwd(), [ev1, ev2, ev3])
     assert len(values) == 1
@@ -2406,6 +2464,60 @@ class TestCodeHighlight:
                     "{bold}{red}E       assert 0{reset}",
                 ]
             )
+        )
+
+    def test_code_highlight_custom_theme(
+        self, pytester: Pytester, color_mapping, monkeypatch: MonkeyPatch
+    ) -> None:
+        pytester.makepyfile(
+            """
+            def test_foo():
+                assert 1 == 10
+        """
+        )
+        monkeypatch.setenv("PYTEST_THEME", "solarized-dark")
+        monkeypatch.setenv("PYTEST_THEME_MODE", "dark")
+        result = pytester.runpytest("--color=yes")
+        result.stdout.fnmatch_lines(
+            color_mapping.format_for_fnmatch(
+                [
+                    "    {kw}def{hl-reset} {function}test_foo{hl-reset}():",
+                    ">       {kw}assert{hl-reset} {number}1{hl-reset} == {number}10{hl-reset}",
+                    "{bold}{red}E       assert 1 == 10{reset}",
+                ]
+            )
+        )
+
+    def test_code_highlight_invalid_theme(
+        self, pytester: Pytester, color_mapping, monkeypatch: MonkeyPatch
+    ) -> None:
+        pytester.makepyfile(
+            """
+            def test_foo():
+                assert 1 == 10
+        """
+        )
+        monkeypatch.setenv("PYTEST_THEME", "invalid")
+        result = pytester.runpytest_subprocess("--color=yes")
+        result.stderr.fnmatch_lines(
+            "ERROR: PYTEST_THEME environment variable had an invalid value: 'invalid'. "
+            "Only valid pygment styles are allowed."
+        )
+
+    def test_code_highlight_invalid_theme_mode(
+        self, pytester: Pytester, color_mapping, monkeypatch: MonkeyPatch
+    ) -> None:
+        pytester.makepyfile(
+            """
+            def test_foo():
+                assert 1 == 10
+        """
+        )
+        monkeypatch.setenv("PYTEST_THEME_MODE", "invalid")
+        result = pytester.runpytest_subprocess("--color=yes")
+        result.stderr.fnmatch_lines(
+            "ERROR: PYTEST_THEME_MODE environment variable had an invalid value: 'invalid'. "
+            "The only allowed values are 'dark' and 'light'."
         )
 
 

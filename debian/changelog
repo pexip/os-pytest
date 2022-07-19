@@ -1,3 +1,9 @@
+pytest (7.1.2-2~bpo11+1pexip1) pexip-bullseye; urgency=medium
+
+  * Backport bullseye-backports version to Pexos.
+
+ -- Mark Hymers <mark.hymers@pexip.com>  Tue, 19 Jul 2022 20:52:40 +0100
+
 pytest (7.1.2-2~bpo11+1) bullseye-backports; urgency=medium
 
   * Rebuild for bullseye-backports.

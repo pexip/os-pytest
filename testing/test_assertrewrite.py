@@ -11,23 +11,27 @@ import textwrap
 import zipfile
 from functools import partial
 from pathlib import Path
+from typing import cast
 from typing import Dict
+from typing import Generator
 from typing import List
 from typing import Mapping
 from typing import Optional
 from typing import Set
-
-import py
+from unittest import mock
 
 import _pytest._code
 import pytest
+from _pytest._io.saferepr import DEFAULT_REPR_MAX_SIZE
 from _pytest.assertion import util
 from _pytest.assertion.rewrite import _get_assertion_exprs
+from _pytest.assertion.rewrite import _get_maxsize_for_saferepr
 from _pytest.assertion.rewrite import AssertionRewritingHook
 from _pytest.assertion.rewrite import get_cache_dir
 from _pytest.assertion.rewrite import PYC_TAIL
 from _pytest.assertion.rewrite import PYTEST_TAG
 from _pytest.assertion.rewrite import rewrite_asserts
+from _pytest.config import Config
 from _pytest.config import ExitCode
 from _pytest.pathlib import make_numbered_dir
 from _pytest.pytester import Pytester
@@ -109,6 +113,28 @@ class TestAssertionRewrite:
             assert imp.col_offset == 0
         assert isinstance(m.body[3], ast.Expr)
 
+    def test_location_is_set(self) -> None:
+        s = textwrap.dedent(
+            """
+
+        assert False, (
+
+            "Ouch"
+          )
+
+        """
+        )
+        m = rewrite(s)
+        for node in m.body:
+            if isinstance(node, ast.Import):
+                continue
+            for n in [node, *ast.iter_child_nodes(node)]:
+                assert n.lineno == 3
+                assert n.col_offset == 0
+                if sys.version_info >= (3, 8):
+                    assert n.end_lineno == 6
+                    assert n.end_col_offset == 3
+
     def test_dont_rewrite(self) -> None:
         s = """'PYTEST_DONT_REWRITE'\nassert 14"""
         m = rewrite(s)
@@ -178,16 +204,8 @@ class TestAssertionRewrite:
         def f4() -> None:
             assert sys == 42  # type: ignore[comparison-overlap]
 
-        verbose = request.config.getoption("verbose")
         msg = getmsg(f4, {"sys": sys})
-        if verbose > 0:
-            assert msg == (
-                "assert <module 'sys' (built-in)> == 42\n"
-                "  +<module 'sys' (built-in)>\n"
-                "  -42"
-            )
-        else:
-            assert msg == "assert sys == 42"
+        assert msg == "assert sys == 42"
 
         def f5() -> None:
             assert cls == 42  # type: ignore[name-defined]  # noqa: F821
@@ -198,20 +216,7 @@ class TestAssertionRewrite:
         msg = getmsg(f5, {"cls": X})
         assert msg is not None
         lines = msg.splitlines()
-        if verbose > 1:
-            assert lines == [
-                f"assert {X!r} == 42",
-                f"  +{X!r}",
-                "  -42",
-            ]
-        elif verbose > 0:
-            assert lines == [
-                "assert <class 'test_...e.<locals>.X'> == 42",
-                f"  +{X!r}",
-                "  -42",
-            ]
-        else:
-            assert lines == ["assert cls == 42"]
+        assert lines == ["assert cls == 42"]
 
     def test_assertrepr_compare_same_width(self, request) -> None:
         """Should use same width/truncation with same initial width."""
@@ -253,14 +258,11 @@ class TestAssertionRewrite:
         msg = getmsg(f, {"cls": Y})
         assert msg is not None
         lines = msg.splitlines()
-        if request.config.getoption("verbose") > 0:
-            assert lines == ["assert 3 == 2", "  +3", "  -2"]
-        else:
-            assert lines == [
-                "assert 3 == 2",
-                " +  where 3 = Y.foo",
-                " +    where Y = cls()",
-            ]
+        assert lines == [
+            "assert 3 == 2",
+            " +  where 3 = Y.foo",
+            " +    where Y = cls()",
+        ]
 
     def test_assert_already_has_message(self) -> None:
         def f():
@@ -383,7 +385,7 @@ class TestAssertionRewrite:
         )
 
         def f7() -> None:
-            assert False or x()  # type: ignore[unreachable]
+            assert False or x()
 
         assert (
             getmsg(f7, {"x": x})
@@ -473,7 +475,7 @@ class TestAssertionRewrite:
         assert getmsg(f1) == "assert ((3 % 2) and False)"
 
         def f2() -> None:
-            assert False or 4 % 2  # type: ignore[unreachable]
+            assert False or 4 % 2
 
         assert getmsg(f2) == "assert (False or (4 % 2))"
 
@@ -637,10 +639,7 @@ class TestAssertionRewrite:
             assert len(values) == 11
 
         msg = getmsg(f)
-        if request.config.getoption("verbose") > 0:
-            assert msg == "assert 10 == 11\n  +10\n  -11"
-        else:
-            assert msg == "assert 10 == 11\n +  where 10 = len([0, 1, 2, 3, 4, 5, ...])"
+        assert msg == "assert 10 == 11\n +  where 10 = len([0, 1, 2, 3, 4, 5, ...])"
 
     def test_custom_reprcompare(self, monkeypatch) -> None:
         def my_reprcompare1(op, left, right) -> str:
@@ -706,10 +705,7 @@ class TestAssertionRewrite:
         msg = getmsg(f)
         assert msg is not None
         lines = util._format_lines([msg])
-        if request.config.getoption("verbose") > 0:
-            assert lines == ["assert 0 == 1\n  +0\n  -1"]
-        else:
-            assert lines == ["assert 0 == 1\n +  where 1 = \\n{ \\n~ \\n}.a"]
+        assert lines == ["assert 0 == 1\n +  where 1 = \\n{ \\n~ \\n}.a"]
 
     def test_custom_repr_non_ascii(self) -> None:
         def f() -> None:
@@ -770,6 +766,35 @@ class TestRewriteOnImport:
             % (z_fn,)
         )
         assert pytester.runpytest().ret == ExitCode.NO_TESTS_COLLECTED
+
+    @pytest.mark.skipif(
+        sys.version_info < (3, 9),
+        reason="importlib.resources.files was introduced in 3.9",
+    )
+    def test_load_resource_via_files_with_rewrite(self, pytester: Pytester) -> None:
+        example = pytester.path.joinpath("demo") / "example"
+        init = pytester.path.joinpath("demo") / "__init__.py"
+        pytester.makepyfile(
+            **{
+                "demo/__init__.py": """
+                from importlib.resources import files
+
+                def load():
+                    return files(__name__)
+                """,
+                "test_load": f"""
+                pytest_plugins = ["demo"]
+
+                def test_load():
+                    from demo import load
+                    found = {{str(i) for i in load().iterdir() if i.name != "__pycache__"}}
+                    assert found == {{{str(example)!r}, {str(init)!r}}}
+                """,
+            }
+        )
+        example.mkdir()
+
+        assert pytester.runpytest("-vv").ret == ExitCode.OK
 
     def test_readonly(self, pytester: Pytester) -> None:
         sub = pytester.mkdir("testing")
@@ -1004,7 +1029,7 @@ class TestAssertionRewriteHookDetails:
                 e = OSError()
                 e.errno = 10
                 raise e
-                yield  # type:ignore[unreachable]
+                yield
 
             monkeypatch.setattr(
                 _pytest.assertion.rewrite, "atomic_write", atomic_write_failed
@@ -1070,9 +1095,28 @@ class TestAssertionRewriteHookDetails:
 
         assert _read_pyc(source, pyc) is None  # no error
 
-    @pytest.mark.skipif(
-        sys.version_info < (3, 7), reason="Only the Python 3.7 format for simplicity"
-    )
+    def test_read_pyc_success(self, tmp_path: Path, pytester: Pytester) -> None:
+        """
+        Ensure that the _rewrite_test() -> _write_pyc() produces a pyc file
+        that can be properly read with _read_pyc()
+        """
+        from _pytest.assertion import AssertionState
+        from _pytest.assertion.rewrite import _read_pyc
+        from _pytest.assertion.rewrite import _rewrite_test
+        from _pytest.assertion.rewrite import _write_pyc
+
+        config = pytester.parseconfig()
+        state = AssertionState(config, "rewrite")
+
+        fn = tmp_path / "source.py"
+        pyc = Path(str(fn) + "c")
+
+        fn.write_text("def test(): assert True")
+
+        source_stat, co = _rewrite_test(fn, config)
+        _write_pyc(state, co, source_stat, pyc)
+        assert _read_pyc(fn, pyc, state.trace) is not None
+
     def test_read_pyc_more_invalid(self, tmp_path: Path) -> None:
         from _pytest.assertion.rewrite import _read_pyc
 
@@ -1241,7 +1285,7 @@ class TestIssue2121:
 
 
 @pytest.mark.skipif(
-    sys.maxsize <= (2 ** 31 - 1), reason="Causes OverflowError on 32bit systems"
+    sys.maxsize <= (2**31 - 1), reason="Causes OverflowError on 32bit systems"
 )
 @pytest.mark.parametrize("offset", [-1, +1])
 def test_source_mtime_long_long(pytester: Pytester, offset) -> None:
@@ -1260,7 +1304,7 @@ def test_source_mtime_long_long(pytester: Pytester, offset) -> None:
     # use unsigned long timestamp which overflows signed long,
     # which was the cause of the bug
     # +1 offset also tests masking of 0xFFFFFFFF
-    timestamp = 2 ** 32 + offset
+    timestamp = 2**32 + offset
     os.utime(str(p), (timestamp, timestamp))
     result = pytester.runpytest()
     assert result.ret == 0
@@ -1304,14 +1348,14 @@ class TestEarlyRewriteBailout:
     @pytest.fixture
     def hook(
         self, pytestconfig, monkeypatch, pytester: Pytester
-    ) -> AssertionRewritingHook:
+    ) -> Generator[AssertionRewritingHook, None, None]:
         """Returns a patched AssertionRewritingHook instance so we can configure its initial paths and track
         if PathFinder.find_spec has been called.
         """
         import importlib.machinery
 
         self.find_spec_calls: List[str] = []
-        self.initial_paths: Set[py.path.local] = set()
+        self.initial_paths: Set[Path] = set()
 
         class StubSession:
             _initialpaths = self.initial_paths
@@ -1325,11 +1369,11 @@ class TestEarlyRewriteBailout:
 
         hook = AssertionRewritingHook(pytestconfig)
         # use default patterns, otherwise we inherit pytest's testing config
-        hook.fnpats[:] = ["test_*.py", "*_test.py"]
-        monkeypatch.setattr(hook, "_find_spec", spy_find_spec)
-        hook.set_session(StubSession())  # type: ignore[arg-type]
-        pytester.syspathinsert()
-        return hook
+        with mock.patch.object(hook, "fnpats", ["test_*.py", "*_test.py"]):
+            monkeypatch.setattr(hook, "_find_spec", spy_find_spec)
+            hook.set_session(StubSession())  # type: ignore[arg-type]
+            pytester.syspathinsert()
+            yield hook
 
     def test_basic(self, pytester: Pytester, hook: AssertionRewritingHook) -> None:
         """
@@ -1346,7 +1390,7 @@ class TestEarlyRewriteBailout:
         pytester.makepyfile(test_foo="def test_foo(): pass")
         pytester.makepyfile(bar="def bar(): pass")
         foobar_path = pytester.makepyfile(foobar="def foobar(): pass")
-        self.initial_paths.add(py.path.local(foobar_path))
+        self.initial_paths.add(foobar_path)
 
         # conftest files should always be rewritten
         assert hook.find_spec("conftest") is not None
@@ -1379,12 +1423,15 @@ class TestEarlyRewriteBailout:
             }
         )
         pytester.syspathinsert("tests")
-        hook.fnpats[:] = ["tests/**.py"]
-        assert hook.find_spec("file") is not None
-        assert self.find_spec_calls == ["file"]
+        with mock.patch.object(hook, "fnpats", ["tests/**.py"]):
+            assert hook.find_spec("file") is not None
+            assert self.find_spec_calls == ["file"]
 
     @pytest.mark.skipif(
         sys.platform.startswith("win32"), reason="cannot remove cwd on Windows"
+    )
+    @pytest.mark.skipif(
+        sys.platform.startswith("sunos5"), reason="cannot remove cwd on Solaris"
     )
     def test_cwd_changed(self, pytester: Pytester, monkeypatch) -> None:
         # Setup conditions for py's fspath trying to import pathlib on py34
@@ -1397,12 +1444,10 @@ class TestEarlyRewriteBailout:
             **{
                 "test_setup_nonexisting_cwd.py": """\
                     import os
-                    import shutil
                     import tempfile
 
-                    d = tempfile.mkdtemp()
-                    os.chdir(d)
-                    shutil.rmtree(d)
+                    with tempfile.TemporaryDirectory() as d:
+                        os.chdir(d)
                 """,
                 "test_test.py": """\
                     def test():
@@ -1627,7 +1672,7 @@ def test_try_makedirs(monkeypatch, tmp_path: Path) -> None:
 
     # monkeypatch to simulate all error situations
     def fake_mkdir(p, exist_ok=False, *, exc):
-        assert isinstance(p, str)
+        assert isinstance(p, Path)
         raise exc
 
     monkeypatch.setattr(os, "makedirs", partial(fake_mkdir, exc=FileNotFoundError()))
@@ -1675,6 +1720,10 @@ class TestPyCacheDir:
     @pytest.mark.skipif(
         sys.version_info < (3, 8), reason="pycache_prefix not available in py<38"
     )
+    @pytest.mark.skipif(
+        sys.version_info[:2] == (3, 9) and sys.platform.startswith("win"),
+        reason="#9298",
+    )
     def test_sys_pycache_prefix_integration(
         self, tmp_path, monkeypatch, pytester: Pytester
     ) -> None:
@@ -1710,3 +1759,52 @@ class TestPyCacheDir:
             cache_tag=sys.implementation.cache_tag
         )
         assert bar_init_pyc.is_file()
+
+
+class TestReprSizeVerbosity:
+    """
+    Check that verbosity also controls the string length threshold to shorten it using
+    ellipsis.
+    """
+
+    @pytest.mark.parametrize(
+        "verbose, expected_size",
+        [
+            (0, DEFAULT_REPR_MAX_SIZE),
+            (1, DEFAULT_REPR_MAX_SIZE * 10),
+            (2, None),
+            (3, None),
+        ],
+    )
+    def test_get_maxsize_for_saferepr(self, verbose: int, expected_size) -> None:
+        class FakeConfig:
+            def getoption(self, name: str) -> int:
+                assert name == "verbose"
+                return verbose
+
+        config = FakeConfig()
+        assert _get_maxsize_for_saferepr(cast(Config, config)) == expected_size
+
+    def create_test_file(self, pytester: Pytester, size: int) -> None:
+        pytester.makepyfile(
+            f"""
+            def test_very_long_string():
+                text = "x" * {size}
+                assert "hello world" in text
+            """
+        )
+
+    def test_default_verbosity(self, pytester: Pytester) -> None:
+        self.create_test_file(pytester, DEFAULT_REPR_MAX_SIZE)
+        result = pytester.runpytest()
+        result.stdout.fnmatch_lines(["*xxx...xxx*"])
+
+    def test_increased_verbosity(self, pytester: Pytester) -> None:
+        self.create_test_file(pytester, DEFAULT_REPR_MAX_SIZE)
+        result = pytester.runpytest("-v")
+        result.stdout.no_fnmatch_line("*xxx...xxx*")
+
+    def test_max_increased_verbosity(self, pytester: Pytester) -> None:
+        self.create_test_file(pytester, DEFAULT_REPR_MAX_SIZE * 10)
+        result = pytester.runpytest("-vv")
+        result.stdout.no_fnmatch_line("*xxx...xxx*")

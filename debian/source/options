@@ -1,1 +1,0 @@
-extend-diff-ignore = "^[^/]*[.]egg-info/|src/_pytest/_version.py"

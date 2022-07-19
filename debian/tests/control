@@ -1,7 +1,0 @@
-Tests: smoketest-3
-Depends: python3-pytest, python3-all
-
-Tests: unittests-3
-Depends: python3-pytest, python3-all, python3-argcomplete, python3-decorator,
- python3-hypothesis, python3-mock, python3-nose, python3-pygments,
- python3-requests, python3-twisted, python3-xmlschema

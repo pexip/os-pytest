@@ -3,7 +3,7 @@ iniconfig
 packaging
 pluggy<2.0,>=0.12
 py>=1.8.2
-toml
+tomli>=1.0.0
 
 [:python_version < "3.8"]
 importlib-metadata>=0.12
@@ -17,5 +17,6 @@ argcomplete
 hypothesis>=3.56
 mock
 nose
+pygments>=2.7.2
 requests
 xmlschema

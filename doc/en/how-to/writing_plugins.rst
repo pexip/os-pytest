@@ -147,29 +147,37 @@ Making your plugin installable by others
 
 If you want to make your plugin externally available, you
 may define a so-called entry point for your distribution so
-that ``pytest`` finds your plugin module.  Entry points are
-a feature that is provided by :std:doc:`setuptools:index`. pytest looks up
-the ``pytest11`` entrypoint to discover its
-plugins and you can thus make your plugin available by defining
-it in your setuptools-invocation:
+that ``pytest`` finds your plugin module. Entry points are
+a feature that is provided by :std:doc:`setuptools <setuptools:index>`.
 
-.. sourcecode:: python
+pytest looks up the ``pytest11`` entrypoint to discover its
+plugins, thus you can make your plugin available by defining
+it in your ``pyproject.toml`` file.
 
-    # sample ./setup.py file
-    from setuptools import setup
+.. sourcecode:: toml
 
-    setup(
-        name="myproject",
-        packages=["myproject"],
-        # the following makes a plugin available to pytest
-        entry_points={"pytest11": ["name_of_plugin = myproject.pluginmodule"]},
-        # custom PyPI classifier for pytest plugins
-        classifiers=["Framework :: Pytest"],
-    )
+    # sample ./pyproject.toml file
+    [build-system]
+    requires = ["hatchling"]
+    build-backend = "hatchling.build"
+
+    [project]
+    name = "myproject"
+    classifiers = [
+        "Framework :: Pytest",
+    ]
+
+    [tool.setuptools]
+    packages = ["myproject"]
+
+    [project.entry_points]
+    pytest11 = [
+        "myproject = myproject.pluginmodule",
+    ]
 
 If a package is installed this way, ``pytest`` will load
 ``myproject.pluginmodule`` as a plugin which can define
-:ref:`hooks <hook-reference>`.
+:ref:`hooks <hook-reference>`. Confirm registration with ``pytest --trace-config``
 
 .. note::
 
@@ -367,7 +375,7 @@ string value of ``Hello World!`` if we do not supply a value or ``Hello
         def _hello(name=None):
             if not name:
                 name = request.config.getoption("name")
-            return "Hello {name}!".format(name=name)
+            return f"Hello {name}!"
 
         return _hello
 

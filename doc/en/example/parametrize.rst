@@ -504,9 +504,9 @@ Running it results in some skips if we don't have all the python interpreters in
    . $ pytest -rs -q multipython.py
    sssssssssssssssssssssssssss                                          [100%]
    ========================= short test summary info ==========================
-   SKIPPED [9] multipython.py:29: 'python3.5' not found
-   SKIPPED [9] multipython.py:29: 'python3.6' not found
-   SKIPPED [9] multipython.py:29: 'python3.7' not found
+   SKIPPED [9] multipython.py:69: 'python3.5' not found
+   SKIPPED [9] multipython.py:69: 'python3.6' not found
+   SKIPPED [9] multipython.py:69: 'python3.7' not found
    27 skipped in 0.12s
 
 Indirect parametrization of optional implementations/imports
@@ -574,7 +574,7 @@ If you run this with reporting for skips enabled:
     test_module.py .s                                                    [100%]
 
     ========================= short test summary info ==========================
-    SKIPPED [1] conftest.py:12: could not import 'opt2': No module named 'opt2'
+    SKIPPED [1] test_module.py:3: could not import 'opt2': No module named 'opt2'
     ======================= 1 passed, 1 skipped in 0.12s =======================
 
 You'll see that we don't have an ``opt2`` module and thus the second test run
@@ -657,18 +657,15 @@ Use :func:`pytest.raises` with the
 :ref:`pytest.mark.parametrize ref` decorator to write parametrized tests
 in which some tests raise exceptions and others do not.
 
-It is helpful to define a no-op context manager ``does_not_raise`` to serve
-as a complement to ``raises``. For example:
+It may be helpful to use ``nullcontext`` as a complement to ``raises``.
+
+For example:
 
 .. code-block:: python
 
-    from contextlib import contextmanager
+    from contextlib import nullcontext as does_not_raise
+
     import pytest
-
-
-    @contextmanager
-    def does_not_raise():
-        yield
 
 
     @pytest.mark.parametrize(
@@ -687,22 +684,3 @@ as a complement to ``raises``. For example:
 
 In the example above, the first three test cases should run unexceptionally,
 while the fourth should raise ``ZeroDivisionError``.
-
-If you're only supporting Python 3.7+, you can simply use ``nullcontext``
-to define ``does_not_raise``:
-
-.. code-block:: python
-
-    from contextlib import nullcontext as does_not_raise
-
-Or, if you're supporting Python 3.3+ you can use:
-
-.. code-block:: python
-
-    from contextlib import ExitStack as does_not_raise
-
-Or, if desired, you can ``pip install contextlib2`` and use:
-
-.. code-block:: python
-
-    from contextlib2 import nullcontext as does_not_raise

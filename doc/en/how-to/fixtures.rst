@@ -398,8 +398,9 @@ access the fixture function:
 .. code-block:: python
 
     # content of conftest.py
-    import pytest
     import smtplib
+
+    import pytest
 
 
     @pytest.fixture(scope="module")
@@ -609,9 +610,9 @@ Here's what that might look like:
 .. code-block:: python
 
     # content of test_emaillib.py
-    import pytest
-
     from emaillib import Email, MailAdminClient
+
+    import pytest
 
 
     @pytest.fixture
@@ -630,6 +631,7 @@ Here's what that might look like:
     def receiving_user(mail_admin):
         user = mail_admin.create_user()
         yield user
+        user.clear_mailbox()
         mail_admin.delete_user(user)
 
 
@@ -683,9 +685,9 @@ Here's how the previous example would look using the ``addfinalizer`` method:
 .. code-block:: python
 
     # content of test_emaillib.py
-    import pytest
-
     from emaillib import Email, MailAdminClient
+
+    import pytest
 
 
     @pytest.fixture
@@ -736,6 +738,87 @@ does offer some nuances for when you're in a pinch.
    .                                                                    [100%]
    1 passed in 0.12s
 
+Note on finalizer order
+""""""""""""""""""""""""
+
+Finalizers are executed in a first-in-last-out order.
+For yield fixtures, the first teardown code to run is from the right-most fixture, i.e. the last test parameter.
+
+
+.. code-block:: python
+
+    # content of test_finalizers.py
+    import pytest
+
+
+    def test_bar(fix_w_yield1, fix_w_yield2):
+        print("test_bar")
+
+
+    @pytest.fixture
+    def fix_w_yield1():
+        yield
+        print("after_yield_1")
+
+
+    @pytest.fixture
+    def fix_w_yield2():
+        yield
+        print("after_yield_2")
+
+
+.. code-block:: pytest
+
+    $ pytest -s test_finalizers.py
+    =========================== test session starts ============================
+    platform linux -- Python 3.x.y, pytest-7.x.y, pluggy-1.x.y
+    rootdir: /home/sweet/project
+    collected 1 item
+
+    test_finalizers.py test_bar
+    .after_yield_2
+    after_yield_1
+
+
+    ============================ 1 passed in 0.12s =============================
+
+For finalizers, the first fixture to run is last call to `request.addfinalizer`.
+
+.. code-block:: python
+
+    # content of test_finalizers.py
+    from functools import partial
+    import pytest
+
+
+    @pytest.fixture
+    def fix_w_finalizers(request):
+        request.addfinalizer(partial(print, "finalizer_2"))
+        request.addfinalizer(partial(print, "finalizer_1"))
+
+
+    def test_bar(fix_w_finalizers):
+        print("test_bar")
+
+
+.. code-block:: pytest
+
+    $ pytest -s test_finalizers.py
+    =========================== test session starts ============================
+    platform linux -- Python 3.x.y, pytest-7.x.y, pluggy-1.x.y
+    rootdir: /home/sweet/project
+    collected 1 item
+
+    test_finalizers.py test_bar
+    .finalizer_1
+    finalizer_2
+
+
+    ============================ 1 passed in 0.12s =============================
+
+This is so because yield fixtures use `addfinalizer` behind the scenes: when the fixture executes, `addfinalizer` registers a function that resumes the generator, which in turn calls the teardown code.
+
+
 .. _`safe teardowns`:
 
 Safe teardowns
@@ -752,9 +835,9 @@ above):
 .. code-block:: python
 
     # content of test_emaillib.py
-    import pytest
-
     from emaillib import Email, MailAdminClient
+
+    import pytest
 
 
     @pytest.fixture
@@ -1030,8 +1113,9 @@ read an optional server URL from the test module which uses our fixture:
 .. code-block:: python
 
     # content of conftest.py
-    import pytest
     import smtplib
+
+    import pytest
 
 
     @pytest.fixture(scope="module")
@@ -1039,7 +1123,7 @@ read an optional server URL from the test module which uses our fixture:
         server = getattr(request.module, "smtpserver", "smtp.gmail.com")
         smtp_connection = smtplib.SMTP(server, 587, timeout=5)
         yield smtp_connection
-        print("finalizing {} ({})".format(smtp_connection, server))
+        print(f"finalizing {smtp_connection} ({server})")
         smtp_connection.close()
 
 We use the ``request.module`` attribute to optionally obtain an
@@ -1193,15 +1277,16 @@ through the special :py:class:`request <FixtureRequest>` object:
 .. code-block:: python
 
     # content of conftest.py
-    import pytest
     import smtplib
+
+    import pytest
 
 
     @pytest.fixture(scope="module", params=["smtp.gmail.com", "mail.python.org"])
     def smtp_connection(request):
         smtp_connection = smtplib.SMTP(request.param, 587, timeout=5)
         yield smtp_connection
-        print("finalizing {}".format(smtp_connection))
+        print(f"finalizing {smtp_connection}")
         smtp_connection.close()
 
 The main change is the declaration of ``params`` with
@@ -1332,13 +1417,15 @@ Running the above tests results in the following test IDs being used:
    =========================== test session starts ============================
    platform linux -- Python 3.x.y, pytest-7.x.y, pluggy-1.x.y
    rootdir: /home/sweet/project
-   collected 11 items
+   collected 12 items
 
    <Module test_anothersmtp.py>
      <Function test_showhelo[smtp.gmail.com]>
      <Function test_showhelo[mail.python.org]>
    <Module test_emaillib.py>
      <Function test_email_received>
+   <Module test_finalizers.py>
+     <Function test_bar>
    <Module test_ids.py>
      <Function test_a[spam]>
      <Function test_a[ham]>
@@ -1350,7 +1437,7 @@ Running the above tests results in the following test IDs being used:
      <Function test_ehlo[mail.python.org]>
      <Function test_noop[mail.python.org]>
 
-   ======================= 11 tests collected in 0.12s ========================
+   ======================= 12 tests collected in 0.12s ========================
 
 .. _`fixture-parametrize-marks`:
 
@@ -1503,7 +1590,7 @@ to show the setup/teardown flow:
 
 
     def test_2(otherarg, modarg):
-        print("  RUN test2 with otherarg {} and modarg {}".format(otherarg, modarg))
+        print(f"  RUN test2 with otherarg {otherarg} and modarg {modarg}")
 
 
 Let's run the tests in verbose mode and with looking at the print-output:
@@ -1604,6 +1691,7 @@ and declare its use in a test module via a ``usefixtures`` marker:
 
     # content of test_setenv.py
     import os
+
     import pytest
 
 
@@ -1684,8 +1772,6 @@ Given the tests file structure is:
 ::
 
     tests/
-        __init__.py
-
         conftest.py
             # content of tests/conftest.py
             import pytest
@@ -1700,8 +1786,6 @@ Given the tests file structure is:
                 assert username == 'username'
 
         subfolder/
-            __init__.py
-
             conftest.py
                 # content of tests/subfolder/conftest.py
                 import pytest
@@ -1710,8 +1794,8 @@ Given the tests file structure is:
                 def username(username):
                     return 'overridden-' + username
 
-            test_something.py
-                # content of tests/subfolder/test_something.py
+            test_something_else.py
+                # content of tests/subfolder/test_something_else.py
                 def test_username(username):
                     assert username == 'overridden-username'
 
@@ -1727,8 +1811,6 @@ Given the tests file structure is:
 ::
 
     tests/
-        __init__.py
-
         conftest.py
             # content of tests/conftest.py
             import pytest
@@ -1770,8 +1852,6 @@ Given the tests file structure is:
 ::
 
     tests/
-        __init__.py
-
         conftest.py
             # content of tests/conftest.py
             import pytest
@@ -1808,8 +1888,6 @@ Given the tests file structure is:
 ::
 
     tests/
-        __init__.py
-
         conftest.py
             # content of tests/conftest.py
             import pytest

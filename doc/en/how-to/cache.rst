@@ -199,7 +199,6 @@ across pytest invocations:
 
     # content of test_caching.py
     import pytest
-    import time
 
 
     def expensive_computation():
@@ -234,7 +233,7 @@ If you run this command for the first time, you can see the print statement:
     >       assert mydata == 23
     E       assert 42 == 23
 
-    test_caching.py:20: AssertionError
+    test_caching.py:19: AssertionError
     -------------------------- Captured stdout setup ---------------------------
     running expensive computation...
     ========================= short test summary info ==========================
@@ -257,7 +256,7 @@ the cache and nothing will be printed:
     >       assert mydata == 23
     E       assert 42 == 23
 
-    test_caching.py:20: AssertionError
+    test_caching.py:19: AssertionError
     ========================= short test summary info ==========================
     FAILED test_caching.py::test_function - assert 42 == 23
     1 failed in 0.12s

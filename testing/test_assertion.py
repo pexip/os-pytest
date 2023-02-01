@@ -776,6 +776,24 @@ class TestAssert_reprcompare:
         msg = "\n".join(expl)
         assert msg
 
+    def test_nfc_nfd_same_string(self) -> None:
+        # issue 3426
+        left = "hyv\xe4"
+        right = "hyva\u0308"
+        expl = callequal(left, right)
+        assert expl == [
+            r"'hyv\xe4' == 'hyva\u0308'",
+            f"- {str(right)}",
+            f"+ {str(left)}",
+        ]
+
+        expl = callequal(left, right, verbose=2)
+        assert expl == [
+            r"'hyv\xe4' == 'hyva\u0308'",
+            f"- {str(right)}",
+            f"+ {str(left)}",
+        ]
+
 
 class TestAssert_reprcompare_dataclass:
     def test_dataclasses(self, pytester: Pytester) -> None:
@@ -1646,15 +1664,7 @@ def test_raise_assertion_error_raising_repr(pytester: Pytester) -> None:
     """
     )
     result = pytester.runpytest()
-    if sys.version_info >= (3, 11):
-        # python 3.11 has native support for un-str-able exceptions
-        result.stdout.fnmatch_lines(
-            ["E       AssertionError: <exception str() failed>"]
-        )
-    else:
-        result.stdout.fnmatch_lines(
-            ["E       AssertionError: <unprintable AssertionError object>"]
-        )
+    result.stdout.fnmatch_lines(["E       AssertionError: <exception str() failed>"])
 
 
 def test_issue_1944(pytester: Pytester) -> None:
@@ -1701,4 +1711,19 @@ def test_assertion_location_with_coverage(pytester: Pytester) -> None:
             "E       assert False",
             "*= 1 failed in*",
         ]
+    )
+
+
+def test_reprcompare_verbose_long() -> None:
+    a = {f"v{i}": i for i in range(11)}
+    b = a.copy()
+    b["v2"] += 10
+    lines = callop("==", a, b, verbose=2)
+    assert lines is not None
+    assert lines[0] == (
+        "{'v0': 0, 'v1': 1, 'v2': 2, 'v3': 3, 'v4': 4, 'v5': 5, "
+        "'v6': 6, 'v7': 7, 'v8': 8, 'v9': 9, 'v10': 10}"
+        " == "
+        "{'v0': 0, 'v1': 1, 'v2': 12, 'v3': 3, 'v4': 4, 'v5': 5, "
+        "'v6': 6, 'v7': 7, 'v8': 8, 'v9': 9, 'v10': 10}"
     )

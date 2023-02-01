@@ -7,9 +7,11 @@ Forwarded: not-needed
  doc/en/conf.py | 2 --
  1 file changed, 2 deletions(-)
 
+diff --git a/doc/en/conf.py b/doc/en/conf.py
+index 4519e4d..ff0049d 100644
 --- a/doc/en/conf.py
 +++ b/doc/en/conf.py
-@@ -66,14 +66,12 @@ latex_elements = {
+@@ -67,14 +67,12 @@ latex_elements = {
  # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
  extensions = [
      "pallets_sphinx_themes",

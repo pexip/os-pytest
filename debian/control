@@ -4,37 +4,35 @@ Priority: optional
 Maintainer: Debian Python Team <team+python@tracker.debian.org>
 Uploaders: Ondřej Nový <onovy@debian.org>,
 Build-Depends: debhelper-compat (= 13),
-               dh-python,
-               python3-all (>= 3.1.2-6~),
+	       dh-sequence-python3,
+	       dh-sequence-sphinxdoc <!nodoc>,
+	       lsof <!nocheck>,
+	       pybuild-plugin-pyproject,
+               python3-all,
                python3-argcomplete <!nocheck>,
                python3-atomicwrites,
-               python3-attr (>= 17.4.0),
+               python3-attr,
                python3-doc,
                python3-hypothesis <!nocheck>,
-               python3-importlib-metadata,
                python3-iniconfig,
-               python3-mock <!nocheck>,
                python3-more-itertools,
-               python3-nose <!nocheck>,
                python3-packaging,
                python3-pallets-sphinx-themes,
-               python3-pip,
                python3-pluggy (>= 0.12),
-               python3-py (>= 1.5.0),
+               python3-py,
                python3-pygments <!nocheck>,
                python3-requests <!nocheck>,
-               python3-setuptools (>= 40.0),
-               python3-setuptools-scm (>= 6.0),
-               python3-six,
-               python3-sphinx (>= 1.0.7+dfsg),
-               python3-toml,
+               python3-setuptools,
+               python3-setuptools-scm,
+               python3-sphinx,
                python3-twisted <!nocheck>,
                python3-wcwidth,
                python3-xmlschema <!nocheck>,
-Standards-Version: 4.6.1
+Standards-Version: 4.6.2
 Homepage: https://pytest.org/
 Vcs-Git: https://salsa.debian.org/python-team/packages/pytest.git
 Vcs-Browser: https://salsa.debian.org/python-team/packages/pytest
+Testsuite: autopkgtest-pkg-pybuild
 Rules-Requires-Root: no
 
 Package: python-pytest-doc
@@ -43,7 +41,7 @@ Architecture: all
 Depends: ${misc:Depends},
          ${sphinxdoc:Depends},
 Recommends: python3-pytest,
-Built-Using: ${sphinxdoc:Built-Using},
+Multi-Arch: foreign
 Description: Simple, powerful testing in Python - Documentation
  This testing tool has for objective to allow the developers to limit the
  boilerplate code around the tests, promoting the use of built-in
@@ -53,11 +51,11 @@ Description: Simple, powerful testing in Python - Documentation
 
 Package: python3-pytest
 Architecture: all
-Depends: python3-attr (>= 17.4.0),
+Depends: python3-attr,
          python3-more-itertools,
          python3-pkg-resources,
          python3-pluggy (>= 0.12),
-         python3-py (>= 1.5.0),
+         python3-py,
          ${misc:Depends},
          ${python3:Depends},
 Recommends: python3-pygments,

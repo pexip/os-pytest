@@ -1,9 +1,76 @@
-pytest (7.1.2-2~bpo11+1) bullseye-backports; urgency=medium
+pytest (7.2.1-2) unstable; urgency=medium
 
-  * Rebuild for bullseye-backports.
-  * [8fab9ab] fix build-deps so correct pkgs are used from backports
+  * Team upload.
+  * Drop depends on python3-exceptiongroup and python3-tomli
+  * Add depend on pybuild-plugin-pyproject
 
- -- Joseph Nahmias <jello@debian.org>  Sun, 17 Jul 2022 17:53:41 -0400
+ -- Timo Röhling <roehling@debian.org>  Wed, 01 Feb 2023 16:28:14 +0100
+
+pytest (7.2.1-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream version 7.2.1
+  * Drop patch for Python 3.11 test workarounds (fixed by upstream)
+
+ -- Timo Röhling <roehling@debian.org>  Mon, 16 Jan 2023 14:56:01 +0100
+
+pytest (7.2.0-4) unstable; urgency=medium
+
+  * Team upload.
+  * Fix dependency issues with Python 3.11 transition.
+    Both python3-exceptiongroup and python3-tomli are no longer
+    needed with Python 3.11, but as long as Python 3.10 is still
+    in the archive, pytest should depend on them to not break
+    Python 3.10 tests. (Closes: #1027751)
+  * Drop ${sphinxdoc:Built-Using} from python-pytest-doc
+  * Bump Standards-Version to 4.6.2
+
+ -- Timo Röhling <roehling@debian.org>  Mon, 02 Jan 2023 22:57:25 +0100
+
+pytest (7.2.0-3) unstable; urgency=medium
+
+  * Team upload.
+
+  [ Jochen Sprickerhof ]
+  * Drop unused build-depends
+
+ -- Timo Röhling <roehling@debian.org>  Thu, 22 Dec 2022 00:49:17 +0100
+
+pytest (7.2.0-2) unstable; urgency=medium
+
+  * Team upload.
+  * Upload to unstable.
+  * Drop ancient d/NEWS
+
+ -- Timo Röhling <roehling@debian.org>  Wed, 14 Dec 2022 19:42:41 +0100
+
+pytest (7.2.0-1) experimental; urgency=medium
+
+  * Team upload.
+  * New upstream version 7.2.0
+  * Use autopkgtest-pkg-pybuild
+  * Ignore flaky test_raise_assertion_error_raising_repr with Python < 3.11
+
+ -- Timo Röhling <roehling@debian.org>  Mon, 12 Dec 2022 18:26:20 +0100
+
+pytest (7.1.2-4) unstable; urgency=medium
+
+  [ Debian Janitor ]
+  * Remove obsolete field Name from debian/upstream/metadata (already present in machine-readable debian/copyright).
+  * Remove constraints unnecessary since buster (oldstable)
+  * Apply multi-arch hints. + python-pytest-doc: Add Multi-Arch: foreign.
+
+ -- Jelmer Vernooĳ <jelmer@debian.org>  Fri, 14 Oct 2022 11:37:43 +0100
+
+pytest (7.1.2-3) unstable; urgency=medium
+
+  * Team upload
+
+  [ Andreas Hasenack ]
+  * d/t/control: also depend on lsof, used in the unittests-3 tests
+  * d/t/control: Add allow-stderr restriction (LP: #1984135)
+
+ -- Bastian Germann <bage@debian.org>  Tue, 27 Sep 2022 09:35:16 +0200
 
 pytest (7.1.2-2) unstable; urgency=medium
 

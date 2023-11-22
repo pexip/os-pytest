@@ -104,8 +104,21 @@ The ``tmpdir`` and ``tmpdir_factory`` fixtures
 
 The ``tmpdir`` and ``tmpdir_factory`` fixtures are similar to ``tmp_path``
 and ``tmp_path_factory``, but use/return legacy `py.path.local`_ objects
-rather than standard :class:`pathlib.Path` objects. These days, prefer to
-use ``tmp_path`` and ``tmp_path_factory``.
+rather than standard :class:`pathlib.Path` objects.
+
+.. note::
+    These days, it is preferred to use ``tmp_path`` and ``tmp_path_factory``.
+
+    In order to help modernize old code bases, one can run pytest with the legacypath
+    plugin disabled:
+
+    .. code-block:: bash
+
+        pytest -p no:legacypath
+
+    This will trigger errors on tests using the legacy paths.
+    It can also be permanently set as part of the :confval:`addopts` parameter in the
+    config file.
 
 See :fixture:`tmpdir <tmpdir>` :fixture:`tmpdir_factory <tmpdir_factory>`
 API for details.

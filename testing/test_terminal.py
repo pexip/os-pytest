@@ -998,6 +998,22 @@ class TestTerminalFunctional:
             ]
         )
 
+    def test_noshowlocals_addopts_override(self, pytester: Pytester) -> None:
+        pytester.makeini("[pytest]\naddopts=--showlocals")
+        p1 = pytester.makepyfile(
+            """
+            def test_noshowlocals():
+                x = 3
+                y = "x" * 5000
+                assert 0
+        """
+        )
+
+        # Override global --showlocals for py.test via arg
+        result = pytester.runpytest(p1, "--no-showlocals")
+        result.stdout.no_fnmatch_line("x* = 3")
+        result.stdout.no_fnmatch_line("y* = 'xxxxxx*")
+
     def test_showlocals_short(self, pytester: Pytester) -> None:
         p1 = pytester.makepyfile(
             """
@@ -1139,7 +1155,21 @@ class TestTerminalFunctional:
         assert result.stdout.lines.count(expected) == 1
 
 
-def test_fail_extra_reporting(pytester: Pytester, monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("use_ci", "expected_message"),
+    (
+        (True, f"- AssertionError: {'this_failed'*100}"),
+        (False, "- AssertionError: this_failedt..."),
+    ),
+    ids=("on CI", "not on CI"),
+)
+def test_fail_extra_reporting(
+    pytester: Pytester, monkeypatch, use_ci: bool, expected_message: str
+) -> None:
+    if use_ci:
+        monkeypatch.setenv("CI", "true")
+    else:
+        monkeypatch.delenv("CI", raising=False)
     monkeypatch.setenv("COLUMNS", "80")
     pytester.makepyfile("def test_this(): assert 0, 'this_failed' * 100")
     result = pytester.runpytest("-rN")
@@ -1148,7 +1178,7 @@ def test_fail_extra_reporting(pytester: Pytester, monkeypatch) -> None:
     result.stdout.fnmatch_lines(
         [
             "*test summary*",
-            "FAILED test_fail_extra_reporting.py::test_this - AssertionError: this_failedt...",
+            f"FAILED test_fail_extra_reporting.py::test_this {expected_message}",
         ]
     )
 
@@ -1235,14 +1265,14 @@ def test_color_yes(pytester: Pytester, color_mapping) -> None:
                 "=*= FAILURES =*=",
                 "{red}{bold}_*_ test_this _*_{reset}",
                 "",
-                "    {kw}def{hl-reset} {function}test_this{hl-reset}():",
-                ">       fail()",
+                "    {kw}def{hl-reset} {function}test_this{hl-reset}():{endline}",
+                ">       fail(){endline}",
                 "",
                 "{bold}{red}test_color_yes.py{reset}:5: ",
                 "_ _ * _ _*",
                 "",
-                "    {kw}def{hl-reset} {function}fail{hl-reset}():",
-                ">       {kw}assert{hl-reset} {number}0{hl-reset}",
+                "    {kw}def{hl-reset} {function}fail{hl-reset}():{endline}",
+                ">       {kw}assert{hl-reset} {number}0{hl-reset}{endline}",
                 "{bold}{red}E       assert 0{reset}",
                 "",
                 "{bold}{red}test_color_yes.py{reset}:2: AssertionError",
@@ -1262,9 +1292,9 @@ def test_color_yes(pytester: Pytester, color_mapping) -> None:
                 "=*= FAILURES =*=",
                 "{red}{bold}_*_ test_this _*_{reset}",
                 "{bold}{red}test_color_yes.py{reset}:5: in test_this",
-                "    fail()",
+                "    fail(){endline}",
                 "{bold}{red}test_color_yes.py{reset}:2: in fail",
-                "    {kw}assert{hl-reset} {number}0{hl-reset}",
+                "    {kw}assert{hl-reset} {number}0{hl-reset}{endline}",
                 "{bold}{red}E   assert 0{reset}",
                 "{red}=*= {red}{bold}1 failed{reset}{red} in *s{reset}{red} =*={reset}",
             ]
@@ -2319,7 +2349,7 @@ def test_line_with_reprcrash(monkeypatch: MonkeyPatch) -> None:
     def mock_get_pos(*args):
         return mocked_pos
 
-    monkeypatch.setattr(_pytest.terminal, "_get_pos", mock_get_pos)
+    monkeypatch.setattr(_pytest.terminal, "_get_node_id_with_markup", mock_get_pos)
 
     class config:
         pass
@@ -2333,10 +2363,16 @@ def test_line_with_reprcrash(monkeypatch: MonkeyPatch) -> None:
                 pass
 
     def check(msg, width, expected):
+        class DummyTerminalWriter:
+            fullwidth = width
+
+            def markup(self, word: str, **markup: str):
+                return word
+
         __tracebackhide__ = True
         if msg:
             rep.longrepr.reprcrash.message = msg  # type: ignore
-        actual = _get_line_with_reprcrash_message(config, rep(), width)  # type: ignore
+        actual = _get_line_with_reprcrash_message(config, rep(), DummyTerminalWriter(), {})  # type: ignore
 
         assert actual == expected
         if actual != f"{mocked_verbose_word} {mocked_pos}":
@@ -2436,8 +2472,8 @@ class TestCodeHighlight:
         result.stdout.fnmatch_lines(
             color_mapping.format_for_fnmatch(
                 [
-                    "    {kw}def{hl-reset} {function}test_foo{hl-reset}():",
-                    ">       {kw}assert{hl-reset} {number}1{hl-reset} == {number}10{hl-reset}",
+                    "    {kw}def{hl-reset} {function}test_foo{hl-reset}():{endline}",
+                    ">       {kw}assert{hl-reset} {number}1{hl-reset} == {number}10{hl-reset}{endline}",
                     "{bold}{red}E       assert 1 == 10{reset}",
                 ]
             )
@@ -2458,9 +2494,9 @@ class TestCodeHighlight:
         result.stdout.fnmatch_lines(
             color_mapping.format_for_fnmatch(
                 [
-                    "    {kw}def{hl-reset} {function}test_foo{hl-reset}():",
+                    "    {kw}def{hl-reset} {function}test_foo{hl-reset}():{endline}",
                     "        {print}print{hl-reset}({str}'''{hl-reset}{str}{hl-reset}",
-                    ">   {str}    {hl-reset}{str}'''{hl-reset}); {kw}assert{hl-reset} {number}0{hl-reset}",
+                    ">   {str}    {hl-reset}{str}'''{hl-reset}); {kw}assert{hl-reset} {number}0{hl-reset}{endline}",
                     "{bold}{red}E       assert 0{reset}",
                 ]
             )
@@ -2481,8 +2517,8 @@ class TestCodeHighlight:
         result.stdout.fnmatch_lines(
             color_mapping.format_for_fnmatch(
                 [
-                    "    {kw}def{hl-reset} {function}test_foo{hl-reset}():",
-                    ">       {kw}assert{hl-reset} {number}1{hl-reset} == {number}10{hl-reset}",
+                    "    {kw}def{hl-reset} {function}test_foo{hl-reset}():{endline}",
+                    ">       {kw}assert{hl-reset} {number}1{hl-reset} == {number}10{hl-reset}{endline}",
                     "{bold}{red}E       assert 1 == 10{reset}",
                 ]
             )

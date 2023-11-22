@@ -12,8 +12,9 @@ Examples for modifying traceback printing:
 
 .. code-block:: bash
 
-    pytest --showlocals # show local variables in tracebacks
-    pytest -l           # show local variables (shortcut)
+    pytest --showlocals     # show local variables in tracebacks
+    pytest -l               # show local variables (shortcut)
+    pytest --no-showlocals  # hide local variables (if addopts enables them)
 
     pytest --tb=auto    # (default) 'long' tracebacks for the first and last
                          # entry, but 'short' style for the other entries
@@ -348,8 +349,7 @@ Example:
     test_example.py:14: AssertionError
     ========================= short test summary info ==========================
     SKIPPED [1] test_example.py:22: skipping this test
-    XFAIL test_example.py::test_xfail
-      reason: xfailing this test
+    XFAIL test_example.py::test_xfail - reason: xfailing this test
     XPASS test_example.py::test_xpass always xfail
     ERROR test_example.py::test_error - assert 0
     FAILED test_example.py::test_fail - assert 0

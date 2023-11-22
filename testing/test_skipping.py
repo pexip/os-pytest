@@ -441,10 +441,8 @@ class TestXFail:
         result = pytester.runpytest(p, "-rx")
         result.stdout.fnmatch_lines(
             [
-                "*test_one*test_this*",
-                "*NOTRUN*noway",
-                "*test_one*test_this_true*",
-                "*NOTRUN*condition:*True*",
+                "*test_one*test_this - reason: *NOTRUN* noway",
+                "*test_one*test_this_true - reason: *NOTRUN* condition: True",
                 "*1 passed*",
             ]
         )
@@ -461,9 +459,7 @@ class TestXFail:
         """
         )
         result = pytester.runpytest(p, "-rx")
-        result.stdout.fnmatch_lines(
-            ["*test_one*test_this*", "*NOTRUN*hello", "*1 xfailed*"]
-        )
+        result.stdout.fnmatch_lines(["*test_one*test_this*NOTRUN*hello", "*1 xfailed*"])
 
     def test_xfail_xpass(self, pytester: Pytester) -> None:
         p = pytester.makepyfile(
@@ -489,7 +485,7 @@ class TestXFail:
         result = pytester.runpytest(p)
         result.stdout.fnmatch_lines(["*1 xfailed*"])
         result = pytester.runpytest(p, "-rx")
-        result.stdout.fnmatch_lines(["*XFAIL*test_this*", "*reason:*hello*"])
+        result.stdout.fnmatch_lines(["*XFAIL*test_this*reason:*hello*"])
         result = pytester.runpytest(p, "--runxfail")
         result.stdout.fnmatch_lines(["*1 pass*"])
 
@@ -507,7 +503,7 @@ class TestXFail:
         result = pytester.runpytest(p)
         result.stdout.fnmatch_lines(["*1 xfailed*"])
         result = pytester.runpytest(p, "-rx")
-        result.stdout.fnmatch_lines(["*XFAIL*test_this*", "*reason:*hello*"])
+        result.stdout.fnmatch_lines(["*XFAIL*test_this*reason:*hello*"])
         result = pytester.runpytest(p, "--runxfail")
         result.stdout.fnmatch_lines(
             """
@@ -543,7 +539,7 @@ class TestXFail:
         """
         )
         result = pytester.runpytest(p, "-rxX")
-        result.stdout.fnmatch_lines(["*XFAIL*test_this*", "*NOTRUN*"])
+        result.stdout.fnmatch_lines(["*XFAIL*test_this*NOTRUN*"])
 
     def test_dynamic_xfail_set_during_funcarg_setup(self, pytester: Pytester) -> None:
         p = pytester.makepyfile(
@@ -622,7 +618,7 @@ class TestXFail:
         """
         )
         result = pytester.runpytest(p, "-rxX")
-        result.stdout.fnmatch_lines(["*XFAIL*", "*unsupported feature*"])
+        result.stdout.fnmatch_lines(["*XFAIL*unsupported feature*"])
         assert result.ret == 0
 
     @pytest.mark.parametrize("strict", [True, False])
@@ -1185,7 +1181,7 @@ def test_xfail_skipif_with_globals(pytester: Pytester) -> None:
     """
     )
     result = pytester.runpytest("-rsx")
-    result.stdout.fnmatch_lines(["*SKIP*x == 3*", "*XFAIL*test_boolean*", "*x == 3*"])
+    result.stdout.fnmatch_lines(["*SKIP*x == 3*", "*XFAIL*test_boolean*x == 3*"])
 
 
 def test_default_markers(pytester: Pytester) -> None:
@@ -1297,8 +1293,7 @@ class TestBooleanCondition:
         result = pytester.runpytest("-rxs")
         result.stdout.fnmatch_lines(
             """
-            *XFAIL*
-            *True123*
+            *XFAIL*True123*
             *1 xfail*
         """
         )
@@ -1441,6 +1436,27 @@ def test_relpath_rootdir(pytester: Pytester) -> None:
     result = pytester.runpytest("-rs", "tests/test_1.py", "--rootdir=tests")
     result.stdout.fnmatch_lines(
         ["SKIPPED [[]1[]] tests/test_1.py:2: unconditional skip"]
+    )
+
+
+def test_skip_from_fixture(pytester: Pytester) -> None:
+    pytester.makepyfile(
+        **{
+            "tests/test_1.py": """
+        import pytest
+        def test_pass(arg):
+            pass
+        @pytest.fixture
+        def arg():
+            condition = True
+            if condition:
+                pytest.skip("Fixture conditional skip")
+            """,
+        }
+    )
+    result = pytester.runpytest("-rs", "tests/test_1.py", "--rootdir=tests")
+    result.stdout.fnmatch_lines(
+        ["SKIPPED [[]1[]] tests/test_1.py:2: Fixture conditional skip"]
     )
 
 

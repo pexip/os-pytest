@@ -66,7 +66,7 @@ jobs:
           - name: "windows-py37-pluggy"
             python: "3.7"
             os: windows-latest
-            tox_env: "py37-pluggymain-xdist"
+            tox_env: "py37-pluggymain-pylib-xdist"
           - name: "windows-py38"
             python: "3.8"
             os: windows-latest
@@ -93,7 +93,7 @@ jobs:
           - name: "ubuntu-py37-pluggy"
             python: "3.7"
             os: ubuntu-latest
-            tox_env: "py37-pluggymain-xdist"
+            tox_env: "py37-pluggymain-pylib-xdist"
           - name: "ubuntu-py37-freeze"
             python: "3.7"
             os: ubuntu-latest
@@ -114,6 +114,7 @@ jobs:
             python: "3.11-dev"
             os: ubuntu-latest
             tox_env: "py311"
+            use_coverage: true
           - name: "ubuntu-pypy3"
             python: "pypy-3.7"
             os: ubuntu-latest
@@ -153,13 +154,13 @@ jobs:
             use_coverage: true
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
       with:
         fetch-depth: 0
         persist-credentials: false
 
     - name: Set up Python ${{ matrix.python }}
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python }}
 
@@ -182,7 +183,8 @@ jobs:
 
     - name: Upload coverage to Codecov
       if: "matrix.use_coverage"
-      uses: codecov/codecov-action@v2
+      uses: codecov/codecov-action@v3
+      continue-on-error: true
       with:
         fail_ci_if_error: true
         files: ./coverage.xml

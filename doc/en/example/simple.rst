@@ -342,7 +342,7 @@ Example:
     def checkconfig(x):
         __tracebackhide__ = True
         if not hasattr(x, "config"):
-            pytest.fail("not configured: {}".format(x))
+            pytest.fail(f"not configured: {x}")
 
 
     def test_something():
@@ -376,6 +376,7 @@ this to make sure unexpected exception types aren't hidden:
 .. code-block:: python
 
     import operator
+
     import pytest
 
 
@@ -386,7 +387,7 @@ this to make sure unexpected exception types aren't hidden:
     def checkconfig(x):
         __tracebackhide__ = operator.methodcaller("errisinstance", ConfigException)
         if not hasattr(x, "config"):
-            raise ConfigException("not configured: {}".format(x))
+            raise ConfigException(f"not configured: {x}")
 
 
     def test_something():
@@ -565,6 +566,7 @@ an ``incremental`` marker which is to be used on classes:
     # content of conftest.py
 
     from typing import Dict, Tuple
+
     import pytest
 
     # store history of failures per test class name and per index in parametrize (if parametrize used)
@@ -608,7 +610,7 @@ an ``incremental`` marker which is to be used on classes:
                 test_name = _test_failed_incremental[cls_name].get(parametrize_index, None)
                 # if name found, test has failed for the combination of class name & test name
                 if test_name is not None:
-                    pytest.xfail("previous test failed ({})".format(test_name))
+                    pytest.xfail(f"previous test failed ({test_name})")
 
 
 These two hook implementations work together to abort incremental-marked
@@ -659,8 +661,7 @@ If we run this:
 
     test_step.py:11: AssertionError
     ========================= short test summary info ==========================
-    XFAIL test_step.py::TestUserHandling::test_deletion
-      reason: previous test failed (test_modification)
+    XFAIL test_step.py::TestUserHandling::test_deletion - reason: previous test failed (test_modification)
     ================== 1 failed, 2 passed, 1 xfailed in 0.12s ==================
 
 We'll see that ``test_deletion`` was not executed because ``test_modification``
@@ -802,8 +803,9 @@ case we just write some information out to a ``failures`` file:
 
     # content of conftest.py
 
-    import pytest
     import os.path
+
+    import pytest
 
 
     @pytest.hookimpl(tryfirst=True, hookwrapper=True)
@@ -1066,6 +1068,7 @@ like ``pytest-timeout`` they must be imported explicitly and passed on to pytest
 
     # contents of app_main.py
     import sys
+
     import pytest_timeout  # Third party plugin
 
     if len(sys.argv) > 1 and sys.argv[1] == "--pytest":

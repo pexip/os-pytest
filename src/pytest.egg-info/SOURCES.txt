@@ -61,7 +61,6 @@ doc/en/history.rst
 doc/en/index.rst
 doc/en/license.rst
 doc/en/naming20.rst
-doc/en/py27-py34-deprecation.rst
 doc/en/pytest.ini
 doc/en/recwarn.rst
 doc/en/requirements.txt
@@ -224,6 +223,9 @@ doc/en/announce/release-7.0.1.rst
 doc/en/announce/release-7.1.0.rst
 doc/en/announce/release-7.1.1.rst
 doc/en/announce/release-7.1.2.rst
+doc/en/announce/release-7.1.3.rst
+doc/en/announce/release-7.2.0.rst
+doc/en/announce/release-7.2.1.rst
 doc/en/announce/sprint2016.rst
 doc/en/example/attic.rst
 doc/en/example/conftest.py
@@ -311,7 +313,6 @@ doc/en/reference/index.rst
 doc/en/reference/plugin_list.rst
 doc/en/reference/reference.rst
 extra/get_issues.py
-extra/setup-py.test/setup.py
 scripts/prepare-release-pr.py
 scripts/publish-gh-release-notes.py
 scripts/release.major.rst
@@ -321,6 +322,7 @@ scripts/release.pre.rst
 scripts/release.py
 scripts/towncrier-draft-to-file.py
 scripts/update-plugin-list.py
+src/py.py
 src/_pytest/__init__.py
 src/_pytest/_argcomplete.py
 src/_pytest/_version.py
@@ -375,6 +377,9 @@ src/_pytest/_io/__init__.py
 src/_pytest/_io/saferepr.py
 src/_pytest/_io/terminalwriter.py
 src/_pytest/_io/wcwidth.py
+src/_pytest/_py/__init__.py
+src/_pytest/_py/error.py
+src/_pytest/_py/path.py
 src/_pytest/assertion/__init__.py
 src/_pytest/assertion/rewrite.py
 src/_pytest/assertion/truncate.py
@@ -451,6 +456,7 @@ testing/test_unraisableexception.py
 testing/test_warning_types.py
 testing/test_warnings.py
 testing/typing_checks.py
+testing/_py/test_local.py
 testing/code/test_code.py
 testing/code/test_excinfo.py
 testing/code/test_source.py

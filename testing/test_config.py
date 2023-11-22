@@ -112,21 +112,26 @@ class TestParseIni:
 
     @pytest.mark.parametrize(
         "section, name",
-        [("tool:pytest", "setup.cfg"), ("pytest", "tox.ini"), ("pytest", "pytest.ini")],
+        [
+            ("tool:pytest", "setup.cfg"),
+            ("pytest", "tox.ini"),
+            ("pytest", "pytest.ini"),
+            ("pytest", ".pytest.ini"),
+        ],
     )
     def test_ini_names(self, pytester: Pytester, name, section) -> None:
         pytester.path.joinpath(name).write_text(
             textwrap.dedent(
                 """
             [{section}]
-            minversion = 1.0
+            minversion = 3.36
         """.format(
                     section=section
                 )
             )
         )
         config = pytester.parseconfig()
-        assert config.getini("minversion") == "1.0"
+        assert config.getini("minversion") == "3.36"
 
     def test_pyproject_toml(self, pytester: Pytester) -> None:
         pytester.makepyprojecttoml(
@@ -837,6 +842,9 @@ class TestConfigAPI:
             (["src/bar/__init__.py"], ["bar"]),
             (["src/bar/__init__.py", "setup.py"], ["bar"]),
             (["source/python/bar/__init__.py", "setup.py"], ["bar"]),
+            # editable installation finder modules
+            (["__editable___xyz_finder.py"], []),
+            (["bar/__init__.py", "__editable___xyz_finder.py"], ["bar"]),
         ],
     )
     def test_iter_rewritable_modules(self, names, expected) -> None:
@@ -1855,8 +1863,7 @@ def test_config_blocked_default_plugins(pytester: Pytester, plugin: str) -> None
         assert result.ret == ExitCode.USAGE_ERROR
         result.stderr.fnmatch_lines(
             [
-                "ERROR: not found: */test_config_blocked_default_plugins.py",
-                "(no name '*/test_config_blocked_default_plugins.py' in any of [])",
+                "ERROR: found no collectors for */test_config_blocked_default_plugins.py",
             ]
         )
         return
@@ -2118,8 +2125,8 @@ class TestDebugOptions:
         result = pytester.runpytest("-h")
         result.stdout.fnmatch_lines(
             [
-                "*store internal tracing debug information in this log*",
-                "*This file is opened with 'w' and truncated as a result*",
-                "*Defaults to 'pytestdebug.log'.",
+                "*Store internal tracing debug information in this log*",
+                "*file. This file is opened with 'w' and truncated as a*",
+                "*Default: pytestdebug.log.",
             ]
         )

@@ -186,8 +186,7 @@ class TestGeneralUsage:
         assert result.ret == ExitCode.USAGE_ERROR
         result.stderr.fnmatch_lines(
             [
-                f"ERROR: not found: {p2}",
-                f"(no name {str(p2)!r} in any of [[][]])",
+                f"ERROR: found no collectors for {p2}",
                 "",
             ]
         )
@@ -1293,3 +1292,14 @@ def test_no_brokenpipeerror_message(pytester: Pytester) -> None:
 
     # Cleanup.
     popen.stderr.close()
+
+
+def test_function_return_non_none_warning(testdir) -> None:
+    testdir.makepyfile(
+        """
+        def test_stuff():
+            return "something"
+    """
+    )
+    res = testdir.runpytest()
+    res.stdout.fnmatch_lines(["*Did you mean to use `assert` instead of `return`?*"])

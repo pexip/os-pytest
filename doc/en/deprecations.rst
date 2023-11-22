@@ -18,6 +18,113 @@ Deprecated Features
 Below is a complete list of all pytest features which are considered deprecated. Using those features will issue
 :class:`~pytest.PytestWarning` or subclasses, which can be filtered using :ref:`standard warning filters <warnings>`.
 
+
+.. _nose-deprecation:
+
+Support for tests written for nose
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. deprecated:: 7.2
+
+Support for running tests written for `nose <https://nose.readthedocs.io/en/latest/>`__ is now deprecated.
+
+``nose`` has been in maintenance mode-only for years, and maintaining the plugin is not trivial as it spills
+over the code base (see :issue:`9886` for more details).
+
+setup/teardown
+^^^^^^^^^^^^^^
+
+One thing that might catch users by surprise is that plain ``setup`` and ``teardown`` methods are not pytest native,
+they are in fact part of the ``nose`` support.
+
+
+.. code-block:: python
+
+    class Test:
+        def setup(self):
+            self.resource = make_resource()
+
+        def teardown(self):
+            self.resource.close()
+
+        def test_foo(self):
+            ...
+
+        def test_bar(self):
+            ...
+
+
+
+Native pytest support uses ``setup_method`` and ``teardown_method`` (see :ref:`xunit-method-setup`), so the above should be changed to:
+
+.. code-block:: python
+
+    class Test:
+        def setup_method(self):
+            self.resource = make_resource()
+
+        def teardown_method(self):
+            self.resource.close()
+
+        def test_foo(self):
+            ...
+
+        def test_bar(self):
+            ...
+
+
+This is easy to do in an entire code base by doing a simple find/replace.
+
+@with_setup
+^^^^^^^^^^^
+
+Code using `@with_setup <with-setup-nose>`_ such as this:
+
+.. code-block:: python
+
+    from nose.tools import with_setup
+
+
+    def setup_some_resource():
+        ...
+
+
+    def teardown_some_resource():
+        ...
+
+
+    @with_setup(setup_some_resource, teardown_some_resource)
+    def test_foo():
+        ...
+
+Will also need to be ported to a supported pytest style. One way to do it is using a fixture:
+
+.. code-block:: python
+
+    import pytest
+
+
+    def setup_some_resource():
+        ...
+
+
+    def teardown_some_resource():
+        ...
+
+
+    @pytest.fixture
+    def some_resource():
+        setup_some_resource()
+        yield
+        teardown_some_resource()
+
+
+    def test_foo(some_resource):
+        ...
+
+
+.. _`with-setup-nose`: https://nose.readthedocs.io/en/latest/testing_tools.html?highlight=with_setup#nose.tools.with_setup
+
 .. _instance-collector-deprecation:
 
 The ``pytest.Instance`` collector
@@ -77,6 +184,50 @@ no matter what argument was used in the constructor. We expect to deprecate the
 ``fspath`` attribute in a future release.
 
 .. _legacy-path-hooks-deprecated:
+
+Configuring hook specs/impls using markers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Before pluggy, pytest's plugin library, was its own package and had a clear API,
+pytest just used ``pytest.mark`` to configure hooks.
+
+The :py:func:`pytest.hookimpl` and :py:func:`pytest.hookspec` decorators
+have been available since years and should be used instead.
+
+.. code-block:: python
+
+    @pytest.mark.tryfirst
+    def pytest_runtest_call():
+        ...
+
+
+    # or
+    def pytest_runtest_call():
+        ...
+
+
+    pytest_runtest_call.tryfirst = True
+
+should be changed to:
+
+.. code-block:: python
+
+    @pytest.hookimpl(tryfirst=True)
+    def pytest_runtest_call():
+        ...
+
+Changed ``hookimpl`` attributes:
+
+* ``tryfirst``
+* ``trylast``
+* ``optionalhook``
+* ``hookwrapper``
+
+Changed ``hookwrapper`` attributes:
+
+* ``firstresult``
+* ``historic``
+
 
 ``py.path.local`` arguments for hooks replaced with ``pathlib.Path``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -251,6 +402,47 @@ Its correct usage was checking that the code emits at least one warning of any t
 or ``pytest.warns(Warning)``.
 
 See :ref:`warns use cases` for examples.
+
+
+Returning non-None value in test functions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. deprecated:: 7.2
+
+A :class:`pytest.PytestReturnNotNoneWarning` is now emitted if a test function returns something other than `None`.
+
+This prevents a common mistake among beginners that expect that returning a `bool` would cause a test to pass or fail, for example:
+
+.. code-block:: python
+
+    @pytest.mark.parametrize(
+        ["a", "b", "result"],
+        [
+            [1, 2, 5],
+            [2, 3, 8],
+            [5, 3, 18],
+        ],
+    )
+    def test_foo(a, b, result):
+        return foo(a, b) == result
+
+Given that pytest ignores the return value, this might be surprising that it will never fail.
+
+The proper fix is to change the `return` to an `assert`:
+
+.. code-block:: python
+
+    @pytest.mark.parametrize(
+        ["a", "b", "result"],
+        [
+            [1, 2, 5],
+            [2, 3, 8],
+            [5, 3, 18],
+        ],
+    )
+    def test_foo(a, b, result):
+        assert foo(a, b) == result
+
 
 The ``--strict`` command-line option
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

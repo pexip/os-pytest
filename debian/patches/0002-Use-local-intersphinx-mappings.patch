@@ -6,11 +6,13 @@ Subject: Use local intersphinx mappings
  doc/en/conf.py | 16 ++++++++++++++++
  1 file changed, 16 insertions(+)
 
+diff --git a/doc/en/conf.py b/doc/en/conf.py
+index 5184ee7..798b0b3 100644
 --- a/doc/en/conf.py
 +++ b/doc/en/conf.py
-@@ -391,6 +391,22 @@ intersphinx_mapping = {
-     "virtualenv": ("https://virtualenv.pypa.io/en/stable", None),
+@@ -395,6 +395,22 @@ intersphinx_mapping = {
      "setuptools": ("https://setuptools.pypa.io/en/stable", None),
+     "packaging": ("https://packaging.python.org/en/latest", None),
  }
 +def check_object_path(key, url, path):
 +    if os.path.isfile(path):

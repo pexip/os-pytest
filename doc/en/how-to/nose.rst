@@ -5,6 +5,9 @@ How to run tests written for nose
 
 ``pytest`` has basic support for running tests written for nose_.
 
+.. warning::
+    This functionality has been deprecated and is likely to be removed in ``pytest 8.x``.
+
 .. _nosestyle:
 
 Usage
@@ -23,8 +26,8 @@ make use of pytest's capabilities.
 Supported nose Idioms
 ----------------------
 
-* setup and teardown at module/class/method level
-* SkipTest exceptions and markers
+* ``setup()`` and ``teardown()`` at module/class/method level: any function or method called ``setup`` will be called during the setup phase for each test, same for ``teardown``.
+* ``SkipTest`` exceptions and markers
 * setup/teardown decorators
 * ``__test__`` attribute on modules/classes/functions
 * general usage of nose utilities

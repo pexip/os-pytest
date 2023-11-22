@@ -38,7 +38,7 @@ Homepage: https://pytest.org/
 Vcs-Git: https://salsa.debian.org/python-team/packages/pytest.git
 Vcs-Browser: https://salsa.debian.org/python-team/packages/pytest
 Rules-Requires-Root: no
-XS-Pexip-Upstream: http://ftp.debian.org/debian/ bullseye-backports
+XS-Pexip-Upstream: http://ftp.debian.org/debian/ bookworm
 
 Package: python-pytest-doc
 Section: doc

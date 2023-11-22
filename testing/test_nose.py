@@ -37,7 +37,7 @@ def test_setup_func_with_setup_decorator() -> None:
         def f(self):
             values.append(1)
 
-    call_optional(A(), "f")
+    call_optional(A(), "f", "A.f")
     assert not values
 
 
@@ -47,7 +47,7 @@ def test_setup_func_not_callable() -> None:
     class A:
         f = 1
 
-    call_optional(A(), "f")
+    call_optional(A(), "f", "A.f")
 
 
 def test_nose_setup_func(pytester: Pytester) -> None:
@@ -165,28 +165,36 @@ def test_module_level_setup(pytester: Pytester) -> None:
         items = {}
 
         def setup():
-            items[1]=1
+            items.setdefault("setup", []).append("up")
 
         def teardown():
-            del items[1]
+            items.setdefault("setup", []).append("down")
 
         def setup2():
-            items[2] = 2
+            items.setdefault("setup2", []).append("up")
 
         def teardown2():
-            del items[2]
+            items.setdefault("setup2", []).append("down")
 
         def test_setup_module_setup():
-            assert items[1] == 1
+            assert items["setup"] == ["up"]
+
+        def test_setup_module_setup_again():
+            assert items["setup"] == ["up"]
 
         @with_setup(setup2, teardown2)
         def test_local_setup():
-            assert items[2] == 2
-            assert 1 not in items
+            assert items["setup"] == ["up"]
+            assert items["setup2"] == ["up"]
+
+        @with_setup(setup2, teardown2)
+        def test_local_setup_again():
+            assert items["setup"] == ["up"]
+            assert items["setup2"] == ["up", "down", "up"]
     """
     )
     result = pytester.runpytest("-p", "nose")
-    result.stdout.fnmatch_lines(["*2 passed*"])
+    result.stdout.fnmatch_lines(["*4 passed*"])
 
 
 def test_nose_style_setup_teardown(pytester: Pytester) -> None:
@@ -211,6 +219,50 @@ def test_nose_style_setup_teardown(pytester: Pytester) -> None:
     result.stdout.fnmatch_lines(["*2 passed*"])
 
 
+def test_fixtures_nose_setup_issue8394(pytester: Pytester) -> None:
+    pytester.makepyfile(
+        """
+        def setup_module():
+            pass
+
+        def teardown_module():
+            pass
+
+        def setup_function(func):
+            pass
+
+        def teardown_function(func):
+            pass
+
+        def test_world():
+            pass
+
+        class Test(object):
+            def setup_class(cls):
+                pass
+
+            def teardown_class(cls):
+                pass
+
+            def setup_method(self, meth):
+                pass
+
+            def teardown_method(self, meth):
+                pass
+
+            def test_method(self): pass
+        """
+    )
+    match = "*no docstring available*"
+    result = pytester.runpytest("--fixtures")
+    assert result.ret == 0
+    result.stdout.no_fnmatch_line(match)
+
+    result = pytester.runpytest("--fixtures", "-v")
+    assert result.ret == 0
+    result.stdout.fnmatch_lines([match, match, match, match])
+
+
 def test_nose_setup_ordering(pytester: Pytester) -> None:
     pytester.makepyfile(
         """
@@ -220,8 +272,10 @@ def test_nose_setup_ordering(pytester: Pytester) -> None:
         class TestClass(object):
             def setup(self):
                 assert visited
+                self.visited_cls = True
             def test_first(self):
-                pass
+                assert visited
+                assert self.visited_cls
         """
     )
     result = pytester.runpytest()
@@ -291,7 +345,7 @@ def test_SkipTest_during_collection(pytester: Pytester) -> None:
         """
     )
     result = pytester.runpytest(p)
-    result.assert_outcomes(skipped=1)
+    result.assert_outcomes(skipped=1, warnings=0)
 
 
 def test_SkipTest_in_test(pytester: Pytester) -> None:
@@ -423,3 +477,22 @@ def test_raises(pytester: Pytester) -> None:
             "* 1 failed, 2 passed *",
         ]
     )
+
+
+def test_nose_setup_skipped_if_non_callable(pytester: Pytester) -> None:
+    """Regression test for #9391."""
+    p = pytester.makepyfile(
+        __init__="",
+        setup="""
+        """,
+        teardown="""
+        """,
+        test_it="""
+        from . import setup, teardown
+
+        def test_it():
+            pass
+        """,
+    )
+    result = pytester.runpytest(p, "-p", "nose")
+    assert result.ret == 0

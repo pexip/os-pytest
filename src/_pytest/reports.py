@@ -1,5 +1,5 @@
+import os
 from io import StringIO
-from pathlib import Path
 from pprint import pprint
 from typing import Any
 from typing import cast
@@ -7,6 +7,8 @@ from typing import Dict
 from typing import Iterable
 from typing import Iterator
 from typing import List
+from typing import Mapping
+from typing import NoReturn
 from typing import Optional
 from typing import Tuple
 from typing import Type
@@ -15,7 +17,6 @@ from typing import TypeVar
 from typing import Union
 
 import attr
-import py
 
 from _pytest._code.code import ExceptionChainRepr
 from _pytest._code.code import ExceptionInfo
@@ -36,7 +37,6 @@ from _pytest.nodes import Item
 from _pytest.outcomes import skip
 
 if TYPE_CHECKING:
-    from typing import NoReturn
     from typing_extensions import Literal
 
     from _pytest.runner import CallInfo
@@ -65,6 +65,7 @@ class BaseReport:
     ]
     sections: List[Tuple[str, str]]
     nodeid: str
+    outcome: "Literal['passed', 'failed', 'skipped']"
 
     def __init__(self, **kw: Any) -> None:
         self.__dict__.update(kw)
@@ -76,7 +77,9 @@ class BaseReport:
 
     def toterminal(self, out: TerminalWriter) -> None:
         if hasattr(self, "node"):
-            out.line(getworkerinfoline(self.node))
+            worker_info = getworkerinfoline(self.node)
+            if worker_info:
+                out.line(worker_info)
 
         longrepr = self.longrepr
         if longrepr is None:
@@ -141,12 +144,24 @@ class BaseReport:
             content for (prefix, content) in self.get_sections("Captured stderr")
         )
 
-    passed = property(lambda x: x.outcome == "passed")
-    failed = property(lambda x: x.outcome == "failed")
-    skipped = property(lambda x: x.outcome == "skipped")
+    @property
+    def passed(self) -> bool:
+        """Whether the outcome is passed."""
+        return self.outcome == "passed"
+
+    @property
+    def failed(self) -> bool:
+        """Whether the outcome is failed."""
+        return self.outcome == "failed"
+
+    @property
+    def skipped(self) -> bool:
+        """Whether the outcome is skipped."""
+        return self.outcome == "skipped"
 
     @property
     def fspath(self) -> str:
+        """The path portion of the reported node, as a string."""
         return self.nodeid.split("::")[0]
 
     @property
@@ -214,7 +229,7 @@ class BaseReport:
 
 def _report_unserialization_failure(
     type_name: str, report_class: Type[BaseReport], reportdict
-) -> "NoReturn":
+) -> NoReturn:
     url = "https://github.com/pytest-dev/pytest/issues"
     stream = StringIO()
     pprint("-" * 100, stream=stream)
@@ -229,7 +244,10 @@ def _report_unserialization_failure(
 @final
 class TestReport(BaseReport):
     """Basic test report object (also used for setup and teardown calls if
-    they fail)."""
+    they fail).
+
+    Reports can contain arbitrary extra attributes.
+    """
 
     __test__ = False
 
@@ -237,7 +255,7 @@ class TestReport(BaseReport):
         self,
         nodeid: str,
         location: Tuple[str, Optional[int], str],
-        keywords,
+        keywords: Mapping[str, Any],
         outcome: "Literal['passed', 'failed', 'skipped']",
         longrepr: Union[
             None, ExceptionInfo[BaseException], Tuple[str, int, str], str, TerminalRepr
@@ -258,7 +276,7 @@ class TestReport(BaseReport):
 
         #: A name -> value dictionary containing all keywords and
         #: markers associated with a test invocation.
-        self.keywords = keywords
+        self.keywords: Mapping[str, Any] = keywords
 
         #: Test outcome, always one of "passed", "failed", "skipped".
         self.outcome = outcome
@@ -273,14 +291,14 @@ class TestReport(BaseReport):
         #: defined properties of the test.
         self.user_properties = list(user_properties or [])
 
-        #: List of pairs ``(str, str)`` of extra information which needs to
-        #: marshallable. Used by pytest to add captured text
-        #: from ``stdout`` and ``stderr``, but may be used by other plugins
-        #: to add arbitrary information to reports.
+        #: Tuples of str ``(heading, content)`` with extra information
+        #: for the test report. Used by pytest to add text captured
+        #: from ``stdout``, ``stderr``, and intercepted logging events. May
+        #: be used by other plugins to add arbitrary information to reports.
         self.sections = list(sections)
 
         #: Time it took to run just the test.
-        self.duration = duration
+        self.duration: float = duration
 
         self.__dict__.update(extra)
 
@@ -291,7 +309,11 @@ class TestReport(BaseReport):
 
     @classmethod
     def from_item_and_call(cls, item: Item, call: "CallInfo[None]") -> "TestReport":
-        """Create and fill a TestReport with standard item and call info."""
+        """Create and fill a TestReport with standard item and call info.
+
+        :param item: The item.
+        :param call: The call info.
+        """
         when = call.when
         # Remove "collect" from the Literal type -- only for collection calls.
         assert when != "collect"
@@ -307,7 +329,7 @@ class TestReport(BaseReport):
                 Tuple[str, int, str],
                 str,
                 TerminalRepr,
-            ] = (None)
+            ] = None
         else:
             if not isinstance(excinfo, ExceptionInfo):
                 outcome = "failed"
@@ -315,7 +337,12 @@ class TestReport(BaseReport):
             elif isinstance(excinfo.value, skip.Exception):
                 outcome = "skipped"
                 r = excinfo._getreprcrash()
-                longrepr = (str(r.path), r.lineno, r.message)
+                if excinfo.value._use_item_location:
+                    path, line = item.reportinfo()[:2]
+                    assert line is not None
+                    longrepr = os.fspath(path), line + 1, r.message
+                else:
+                    longrepr = (str(r.path), r.lineno, r.message)
             else:
                 outcome = "failed"
                 if call.when == "call":
@@ -341,15 +368,20 @@ class TestReport(BaseReport):
 
 @final
 class CollectReport(BaseReport):
-    """Collection report object."""
+    """Collection report object.
+
+    Reports can contain arbitrary extra attributes.
+    """
 
     when = "collect"
 
     def __init__(
         self,
         nodeid: str,
-        outcome: "Literal['passed', 'skipped', 'failed']",
-        longrepr,
+        outcome: "Literal['passed', 'failed', 'skipped']",
+        longrepr: Union[
+            None, ExceptionInfo[BaseException], Tuple[str, int, str], str, TerminalRepr
+        ],
         result: Optional[List[Union[Item, Collector]]],
         sections: Iterable[Tuple[str, str]] = (),
         **extra,
@@ -366,11 +398,10 @@ class CollectReport(BaseReport):
         #: The collected items and collection nodes.
         self.result = result or []
 
-        #: List of pairs ``(str, str)`` of extra information which needs to
-        #: marshallable.
-        # Used by pytest to add captured text : from ``stdout`` and ``stderr``,
-        # but may be used by other plugins : to add arbitrary information to
-        # reports.
+        #: Tuples of str ``(heading, content)`` with extra information
+        #: for the test report. Used by pytest to add text captured
+        #: from ``stdout``, ``stderr``, and intercepted logging events. May
+        #: be used by other plugins to add arbitrary information to reports.
         self.sections = list(sections)
 
         self.__dict__.update(extra)
@@ -484,8 +515,8 @@ def _report_to_json(report: BaseReport) -> Dict[str, Any]:
     else:
         d["longrepr"] = report.longrepr
     for name in d:
-        if isinstance(d[name], (py.path.local, Path)):
-            d[name] = str(d[name])
+        if isinstance(d[name], os.PathLike):
+            d[name] = os.fspath(d[name])
         elif name == "result":
             d[name] = None  # for now
     return d

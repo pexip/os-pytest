@@ -15,13 +15,12 @@ from _pytest.pytester import Pytester
 
 class TestMark:
     @pytest.mark.parametrize("attr", ["mark", "param"])
-    @pytest.mark.parametrize("modulename", ["py.test", "pytest"])
-    def test_pytest_exists_in_namespace_all(self, attr: str, modulename: str) -> None:
-        module = sys.modules[modulename]
+    def test_pytest_exists_in_namespace_all(self, attr: str) -> None:
+        module = sys.modules["pytest"]
         assert attr in module.__all__  # type: ignore
 
     def test_pytest_mark_notcallable(self) -> None:
-        mark = MarkGenerator()
+        mark = MarkGenerator(_ispytest=True)
         with pytest.raises(TypeError):
             mark()  # type: ignore[operator]
 
@@ -40,7 +39,7 @@ class TestMark:
         assert pytest.mark.foo.with_args(SomeClass) is not SomeClass  # type: ignore[comparison-overlap]
 
     def test_pytest_mark_name_starts_with_underscore(self) -> None:
-        mark = MarkGenerator()
+        mark = MarkGenerator(_ispytest=True)
         with pytest.raises(AttributeError):
             mark._some_name
 
@@ -356,8 +355,14 @@ def test_parametrize_with_module(pytester: Pytester) -> None:
             "foo or or",
             "at column 8: expected not OR left parenthesis OR identifier; got or",
         ),
-        ("(foo", "at column 5: expected right parenthesis; got end of input",),
-        ("foo bar", "at column 5: expected end of input; got identifier",),
+        (
+            "(foo",
+            "at column 5: expected right parenthesis; got end of input",
+        ),
+        (
+            "foo bar",
+            "at column 5: expected end of input; got identifier",
+        ),
         (
             "or or",
             "at column 1: expected not OR left parenthesis OR identifier; got or",
@@ -818,23 +823,6 @@ class TestKeywordSelection:
         assert len(dlist) == 1
         assert dlist[0].items[0].name == "test_1"
 
-    def test_select_starton(self, pytester: Pytester) -> None:
-        threepass = pytester.makepyfile(
-            test_threepass="""
-            def test_one(): assert 1
-            def test_two(): assert 1
-            def test_three(): assert 1
-        """
-        )
-        reprec = pytester.inline_run("-k", "test_two:", threepass)
-        passed, skipped, failed = reprec.listoutcomes()
-        assert len(passed) == 2
-        assert not failed
-        dlist = reprec.getcalls("pytest_deselected")
-        assert len(dlist) == 1
-        item = dlist[0].items[0]
-        assert item.name == "test_one"
-
     def test_keyword_extra(self, pytester: Pytester) -> None:
         p = pytester.makepyfile(
             """
@@ -863,7 +851,8 @@ class TestKeywordSelection:
         assert passed + skipped + failed == 0
 
     @pytest.mark.parametrize(
-        "keyword", ["__", "+", ".."],
+        "keyword",
+        ["__", "+", ".."],
     )
     def test_no_magic_values(self, pytester: Pytester, keyword: str) -> None:
         """Make sure the tests do not match on magic values,
@@ -1041,11 +1030,12 @@ def test_mark_expressions_no_smear(pytester: Pytester) -> None:
     # assert skipped_k == failed_k == 0
 
 
-def test_addmarker_order() -> None:
+def test_addmarker_order(pytester) -> None:
     session = mock.Mock()
     session.own_markers = []
     session.parent = None
     session.nodeid = ""
+    session.path = pytester.path
     node = Node.from_parent(session, name="Test")
     node.add_marker("foo")
     node.add_marker("bar")
@@ -1104,7 +1094,7 @@ def test_pytest_param_id_allows_none_or_string(s) -> None:
     assert pytest.param(id=s)
 
 
-@pytest.mark.parametrize("expr", ("NOT internal_err", "NOT (internal_err)", "bogus/"))
+@pytest.mark.parametrize("expr", ("NOT internal_err", "NOT (internal_err)", "bogus="))
 def test_marker_expr_eval_failure_handling(pytester: Pytester, expr) -> None:
     foo = pytester.makepyfile(
         """
@@ -1119,3 +1109,27 @@ def test_marker_expr_eval_failure_handling(pytester: Pytester, expr) -> None:
     result = pytester.runpytest(foo, "-m", expr)
     result.stderr.fnmatch_lines([expected])
     assert result.ret == ExitCode.USAGE_ERROR
+
+
+def test_mark_mro() -> None:
+    xfail = pytest.mark.xfail
+
+    @xfail("a")
+    class A:
+        pass
+
+    @xfail("b")
+    class B:
+        pass
+
+    @xfail("c")
+    class C(A, B):
+        pass
+
+    from _pytest.mark.structures import get_unpacked_marks
+
+    all_marks = get_unpacked_marks(C)
+
+    assert all_marks == [xfail("c").mark, xfail("a").mark, xfail("b").mark]
+
+    assert get_unpacked_marks(C, consider_mro=False) == [xfail("c").mark]

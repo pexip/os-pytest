@@ -1,12 +1,13 @@
 import inspect
+import sys
 import textwrap
+from pathlib import Path
 from typing import Callable
 from typing import Optional
 
-import py
-
 import pytest
 from _pytest.doctest import _get_checker
+from _pytest.doctest import _is_main_py
 from _pytest.doctest import _is_mocked
 from _pytest.doctest import _is_setup_py
 from _pytest.doctest import _patch_unwrap_mock_aware
@@ -70,7 +71,9 @@ class TestDoctests:
 
     @pytest.mark.parametrize("filename", ["__init__", "whatever"])
     def test_collect_module_two_doctest_no_modulelevel(
-        self, pytester: Pytester, filename: str,
+        self,
+        pytester: Pytester,
+        filename: str,
     ) -> None:
         path = pytester.makepyfile(
             **{
@@ -78,7 +81,7 @@ class TestDoctests:
             '# Empty'
             def my_func():
                 ">>> magic = 42 "
-            def unuseful():
+            def useless():
                 '''
                 # This is a function
                 # >>> # it doesn't have any doctest
@@ -109,6 +112,28 @@ class TestDoctests:
         )
         reprec = pytester.inline_run(p)
         reprec.assertoutcome(failed=1)
+
+    def test_importmode(self, pytester: Pytester):
+        p = pytester.makepyfile(
+            **{
+                "namespacepkg/innerpkg/__init__.py": "",
+                "namespacepkg/innerpkg/a.py": """
+                  def some_func():
+                    return 42
+                """,
+                "namespacepkg/innerpkg/b.py": """
+                  from namespacepkg.innerpkg.a import some_func
+                  def my_func():
+                    '''
+                    >>> my_func()
+                    42
+                    '''
+                    return some_func()
+                """,
+            }
+        )
+        reprec = pytester.inline_run(p, "--doctest-modules", "--import-mode=importlib")
+        reprec.assertoutcome(passed=1)
 
     def test_new_pattern(self, pytester: Pytester):
         p = pytester.maketxtfile(
@@ -198,6 +223,11 @@ class TestDoctests:
                 "Traceback (most recent call last):",
                 '  File "*/doctest.py", line *, in __run',
                 "    *",
+                *(
+                    (" *^^^^*",)
+                    if (3, 11, 0, "beta", 4) > sys.version_info >= (3, 11)
+                    else ()
+                ),
                 '  File "<doctest test_doctest_unexpected_exception.txt[1]>", line 1, in <module>',
                 "ZeroDivisionError: division by zero",
                 "*/test_doctest_unexpected_exception.txt:2: UnexpectedException",
@@ -562,7 +592,7 @@ class TestDoctests:
                 >>> magic - 42
                 0
                 '''
-            def unuseful():
+            def useless():
                 pass
             def another():
                 '''
@@ -729,12 +759,11 @@ class TestDoctests:
             test_unicode_doctest="""
             .. doctest::
 
-                >>> print(
-                ...    "Hi\\n\\nByé")
+                >>> print("Hi\\n\\nByé")
                 Hi
                 ...
                 Byé
-                >>> 1/0  # Byé
+                >>> 1 / 0  # Byé
                 1
         """
         )
@@ -800,16 +829,22 @@ class TestDoctests:
         """
         p = pytester.makepyfile(
             setup="""
-            from setuptools import setup, find_packages
-            setup(name='sample',
-                  version='0.0',
-                  description='description',
-                  packages=find_packages()
-            )
+            if __name__ == '__main__':
+                from setuptools import setup, find_packages
+                setup(name='sample',
+                      version='0.0',
+                      description='description',
+                      packages=find_packages()
+                )
         """
         )
         result = pytester.runpytest(p, "--doctest-modules")
         result.stdout.fnmatch_lines(["*collected 0 items*"])
+
+    def test_main_py_does_not_cause_import_errors(self, pytester: Pytester):
+        p = pytester.copy_example("doctest/main_py")
+        result = pytester.runpytest(p, "--doctest-modules")
+        result.stdout.fnmatch_lines(["*collected 2 items*", "*1 failed, 1 passed*"])
 
     def test_invalid_setup_py(self, pytester: Pytester):
         """
@@ -1164,6 +1199,41 @@ class TestDoctestSkips:
             ["*4: UnexpectedException*", "*5: DocTestFailure*", "*8: DocTestFailure*"]
         )
 
+    def test_skipping_wrapped_test(self, pytester):
+        """
+        Issue 8796: INTERNALERROR raised when skipping a decorated DocTest
+        through pytest_collection_modifyitems.
+        """
+        pytester.makeconftest(
+            """
+            import pytest
+            from _pytest.doctest import DoctestItem
+
+            def pytest_collection_modifyitems(config, items):
+                skip_marker = pytest.mark.skip()
+
+                for item in items:
+                    if isinstance(item, DoctestItem):
+                        item.add_marker(skip_marker)
+            """
+        )
+
+        pytester.makepyfile(
+            """
+            from contextlib import contextmanager
+
+            @contextmanager
+            def my_config_context():
+                '''
+                >>> import os
+                '''
+            """
+        )
+
+        result = pytester.runpytest("--doctest-modules")
+        assert "INTERNALERROR" not in result.stdout.str()
+        result.assert_outcomes(skipped=1)
+
 
 class TestDoctestAutoUseFixtures:
 
@@ -1496,25 +1566,33 @@ def test_warning_on_unwrap_of_broken_object(
     assert inspect.unwrap.__module__ == "inspect"
 
 
-def test_is_setup_py_not_named_setup_py(tmp_path):
+def test_is_setup_py_not_named_setup_py(tmp_path: Path) -> None:
     not_setup_py = tmp_path.joinpath("not_setup.py")
     not_setup_py.write_text('from setuptools import setup; setup(name="foo")')
-    assert not _is_setup_py(py.path.local(str(not_setup_py)))
+    assert not _is_setup_py(not_setup_py)
 
 
 @pytest.mark.parametrize("mod", ("setuptools", "distutils.core"))
-def test_is_setup_py_is_a_setup_py(tmpdir, mod):
-    setup_py = tmpdir.join("setup.py")
-    setup_py.write(f'from {mod} import setup; setup(name="foo")')
+def test_is_setup_py_is_a_setup_py(tmp_path: Path, mod: str) -> None:
+    setup_py = tmp_path.joinpath("setup.py")
+    setup_py.write_text(f'from {mod} import setup; setup(name="foo")', "utf-8")
     assert _is_setup_py(setup_py)
 
 
 @pytest.mark.parametrize("mod", ("setuptools", "distutils.core"))
-def test_is_setup_py_different_encoding(tmp_path, mod):
+def test_is_setup_py_different_encoding(tmp_path: Path, mod: str) -> None:
     setup_py = tmp_path.joinpath("setup.py")
     contents = (
         "# -*- coding: cp1252 -*-\n"
         'from {} import setup; setup(name="foo", description="€")\n'.format(mod)
     )
     setup_py.write_bytes(contents.encode("cp1252"))
-    assert _is_setup_py(py.path.local(str(setup_py)))
+    assert _is_setup_py(setup_py)
+
+
+@pytest.mark.parametrize(
+    "name, expected", [("__main__.py", True), ("__init__.py", False)]
+)
+def test_is_main_py(tmp_path: Path, name: str, expected: bool) -> None:
+    dunder_main = tmp_path.joinpath(name)
+    assert _is_main_py(dunder_main) == expected

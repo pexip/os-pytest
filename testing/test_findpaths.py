@@ -1,9 +1,12 @@
+import os
 from pathlib import Path
 from textwrap import dedent
 
 import pytest
+from _pytest.config import UsageError
 from _pytest.config.findpaths import get_common_ancestor
 from _pytest.config.findpaths import get_dirs_from_args
+from _pytest.config.findpaths import is_fs_root
 from _pytest.config.findpaths import load_config_dict_from_file
 
 
@@ -52,6 +55,13 @@ class TestLoadConfigDictFromFile:
             load_config_dict_from_file(fn)
 
     def test_invalid_toml_file(self, tmp_path: Path) -> None:
+        """Invalid .toml files should raise `UsageError`."""
+        fn = tmp_path / "myconfig.toml"
+        fn.write_text("]invalid toml[", encoding="utf-8")
+        with pytest.raises(UsageError):
+            load_config_dict_from_file(fn)
+
+    def test_custom_toml_file(self, tmp_path: Path) -> None:
         """.toml files without [tool.pytest.ini_options] are not considered for configuration."""
         fn = tmp_path / "myconfig.toml"
         fn.write_text(
@@ -77,6 +87,7 @@ class TestLoadConfigDictFromFile:
             y = 20.0
             values = ["tests", "integration"]
             name = "foo"
+            heterogeneous_array = [1, "str"]
             """
             ),
             encoding="utf-8",
@@ -86,6 +97,7 @@ class TestLoadConfigDictFromFile:
             "y": "20.0",
             "values": ["tests", "integration"],
             "name": "foo",
+            "heterogeneous_array": [1, "str"],
         }
 
 
@@ -123,3 +135,18 @@ def test_get_dirs_from_args(tmp_path):
     assert get_dirs_from_args(
         [str(fn), str(tmp_path / "does_not_exist"), str(d), option, xdist_rsync_option]
     ) == [fn.parent, d]
+
+
+@pytest.mark.parametrize(
+    "path, expected",
+    [
+        pytest.param(
+            f"e:{os.sep}", True, marks=pytest.mark.skipif("sys.platform != 'win32'")
+        ),
+        (f"{os.sep}", True),
+        (f"e:{os.sep}projects", False),
+        (f"{os.sep}projects", False),
+    ],
+)
+def test_is_fs_root(path: Path, expected: bool) -> None:
+    assert is_fs_root(Path(path)) is expected

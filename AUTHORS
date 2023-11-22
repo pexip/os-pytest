@@ -5,6 +5,7 @@ Contributors include::
 
 Aaron Coleman
 Abdeali JK
+Abdelrahman Elbehery
 Abhijeet Kasurde
 Adam Johnson
 Adam Uhlir
@@ -12,7 +13,9 @@ Ahn Ki-Wook
 Akiomi Kamakura
 Alan Velasco
 Alexander Johnson
+Alexander King
 Alexei Kozlenok
+Alice Purcell
 Allan Feldman
 Aly Sivji
 Amir Elkess
@@ -23,6 +26,7 @@ Andras Tim
 Andrea Cimatoribus
 Andreas Motl
 Andreas Zeidler
+Andrew Shapton
 Andrey Paramonov
 Andrzej Klajnert
 Andrzej Ostrowski
@@ -30,16 +34,20 @@ Andy Freeland
 Anthon van der Neut
 Anthony Shaw
 Anthony Sottile
+Anton Grinevich
 Anton Lodder
 Antony Lee
 Arel Cordero
+Arias Emmanuel
 Ariel Pillemer
 Armin Rigo
 Aron Coyle
 Aron Curzon
 Aviral Verma
 Aviv Palivoda
+Babak Keyvani
 Barney Gale
+Ben Gartner
 Ben Webb
 Benjamin Peterson
 Bernard Pratz
@@ -56,8 +64,11 @@ Ceridwen
 Charles Cloud
 Charles Machalow
 Charnjit SiNGH (CCSJ)
+Cheuk Ting Ho
 Chris Lamb
 Chris NeJame
+Chris Rose
+Chris Wheeler
 Christian Boelsen
 Christian Fetzer
 Christian Neumüller
@@ -70,12 +81,16 @@ Christopher Gilling
 Claire Cecil
 Claudio Madotto
 CrazyMerlyn
+Cristian Vera
 Cyrus Maden
 Damian Skrzypczak
 Daniel Grana
 Daniel Hahler
 Daniel Nuri
+Daniel Sánchez Castelló
+Daniel Valenzuela Zenteno
 Daniel Wandschneider
+Daniele Procida
 Danielle Jenkins
 Daniil Galiev
 Dave Hunt
@@ -87,6 +102,7 @@ David Vierra
 Daw-Ran Liou
 Debi Mishra
 Denis Kirisov
+Denivy Braiam Rück
 Dhiren Serai
 Diego Russo
 Dmitry Dygalo
@@ -95,11 +111,14 @@ Dominic Mortlock
 Duncan Betts
 Edison Gustavo Muenz
 Edoardo Batini
+Edson Tadeu M. Manoel
 Eduardo Schettino
 Eli Boyarski
 Elizaveta Shashkova
+Éloi Rivard
 Endre Galaczi
 Eric Hunsberger
+Eric Liu
 Eric Siegerman
 Erik Aronesty
 Erik M. Bray
@@ -111,12 +130,15 @@ Feng Ma
 Florian Bruhin
 Florian Dahlitz
 Floris Bruynooghe
+Gabriel Landau
 Gabriel Reis
 Garvit Shubham
 Gene Wood
 George Kussumoto
 Georgy Dyuldin
+Gergely Kalmár
 Gleb Nikonorov
+Graeme Smecher
 Graham Horler
 Greg Price
 Gregory Lee
@@ -125,6 +147,7 @@ Grigorii Eremeev (budulianin)
 Guido Wesdorp
 Guoqiang Zhang
 Harald Armin Massa
+Harshna
 Henk-Jaap Wagenaar
 Holger Kohr
 Hugo van Kemenade
@@ -133,10 +156,12 @@ Ian Bicking
 Ian Lesperance
 Ilya Konstantinov
 Ionuț Turturică
+Itxaso Aizpurua
 Iwan Briquemont
 Jaap Broekhuizen
 Jakob van Santen
 Jakub Mitoraj
+James Bourbeau
 Jan Balster
 Janne Vanhala
 Jason R. Coombs
@@ -146,7 +171,9 @@ Jeff Rackauckas
 Jeff Widman
 Jenni Rinker
 John Eddie Ayson
+John Litborn
 John Towler
+Jon Parise
 Jon Sonesen
 Jonas Obrist
 Jordan Guymon
@@ -157,6 +184,7 @@ Josh Karpel
 Joshua Bronson
 Jurko Gospodnetić
 Justyna Janczyszyn
+Justice Ndou
 Kale Kundert
 Kamran Ahmad
 Karl O. Pinc
@@ -165,9 +193,14 @@ Katarzyna Jachim
 Katarzyna Król
 Katerina Koukiou
 Keri Volans
+Kevin C
 Kevin Cox
+Kevin Hierro Carrasco
 Kevin J. Foley
+Kian Eliasi
+Kian-Meng Ang
 Kodi B. Arfer
+Kojo Idrissa
 Kostis Anagnostopoulos
 Kristoffer Nordström
 Kyle Altendorf
@@ -211,6 +244,7 @@ Michael Goerz
 Michael Krebs
 Michael Seifert
 Michal Wajszczuk
+Michał Zięba
 Mihai Capotă
 Mike Hoyle (hoylemd)
 Mike Lundy
@@ -224,6 +258,8 @@ Nicholas Murphy
 Niclas Olofsson
 Nicolas Delaby
 Nikolay Kondratyev
+Nipunn Koorapati
+Olga Matoula
 Oleg Pidsadnyi
 Oleg Sushchenko
 Oliver Bestwalter
@@ -231,7 +267,10 @@ Omar Kohl
 Omer Hadari
 Ondřej Súkup
 Oscar Benjamin
+Parth Patel
 Patrick Hayes
+Paul Müller
+Paul Reece
 Pauli Virtanen
 Pavel Karateev
 Paweł Adamczak
@@ -265,17 +304,21 @@ Ross Lawley
 Ruaridh Williamson
 Russel Winder
 Ryan Wooden
+Saiprasad Kale
+Samuel Colvin
 Samuel Dion-Girardeau
 Samuel Searles-Bryant
 Samuele Pedroni
 Sanket Duthade
 Sankt Petersbug
+Saravanan Padmanaban
 Segev Finer
 Serhii Mozghovyi
 Seth Junot
 Shantanu Jain
 Shubham Adep
 Simon Gomizelj
+Simon Holesch
 Simon Kerr
 Skylar Downes
 Srinivas Reddy Thatiparthy
@@ -289,28 +332,35 @@ Sven-Hendrik Haase
 Sylvain Marié
 Tadek Teleżyński
 Takafumi Arakaki
+Taneli Hukkinen
 Tanvi Mehta
 Tarcisio Fischer
 Tareq Alayan
+Tatiana Ovary
 Ted Xiao
+Terje Runde
 Thomas Grainger
 Thomas Hisch
 Tim Hoffmann
 Tim Strazny
+Tobias Diez
 Tom Dalton
 Tom Viner
 Tomáš Gavenčiak
 Tomer Keren
+Tony Narlock
 Tor Colvin
 Trevor Bekolay
 Tyler Goodlet
 Tzu-ping Chung
 Vasily Kuznetsov
 Victor Maryama
+Victor Rodriguez
 Victor Uriarte
 Vidar T. Fauske
 Virgil Dupras
 Vitaly Lashmanov
+Vivaan Verma
 Vlad Dragos
 Vlad Radziuk
 Vladyslav Rachek
@@ -324,6 +374,10 @@ Xixi Zhao
 Xuan Luong
 Xuecong Liao
 Yoav Caspi
+Yuval Shimon
 Zac Hatfield-Dodds
+Zachary Kneupper
+Zachary OBrien
+Zhouxin Qiu
 Zoltán Máté
 Zsolt Cserna

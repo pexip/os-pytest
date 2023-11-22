@@ -114,13 +114,13 @@ def dummy_yaml_custom_test(pytester: Pytester):
         """
         import pytest
 
-        def pytest_collect_file(parent, path):
-            if path.ext == ".yaml" and path.basename.startswith("test"):
-                return YamlFile.from_parent(fspath=path, parent=parent)
+        def pytest_collect_file(parent, file_path):
+            if file_path.suffix == ".yaml" and file_path.name.startswith("test"):
+                return YamlFile.from_parent(path=file_path, parent=parent)
 
         class YamlFile(pytest.File):
             def collect(self):
-                yield YamlItem.from_parent(name=self.fspath.basename, parent=self)
+                yield YamlItem.from_parent(name=self.path.name, parent=self)
 
         class YamlItem(pytest.Item):
             def runtest(self):
@@ -157,6 +157,7 @@ def color_mapping():
             "number": "\x1b[94m",
             "str": "\x1b[33m",
             "print": "\x1b[96m",
+            "endline": "\x1b[90m\x1b[39;49;00m",
         }
         RE_COLORS = {k: re.escape(v) for k, v in COLORS.items()}
 
